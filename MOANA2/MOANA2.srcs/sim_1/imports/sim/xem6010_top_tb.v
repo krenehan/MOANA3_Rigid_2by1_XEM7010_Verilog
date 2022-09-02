@@ -110,7 +110,7 @@ module xem6010_top_tb;
 	// TEST SETTINGS
 	localparam NUMBER_OF_CHIPS = 2;
 	localparam NUMBER_OF_CAPTURES = 2;
-	localparam NUMBER_OF_FRAMES = 16'd2;
+	localparam NUMBER_OF_FRAMES = 16'd1;
 	localparam PATTERNS_PER_FRAME = 16'd2;
 	localparam PAD_CAPTURED_MASK = 16'b11;
 	localparam MEASUREMENTS_PER_PATTERN = 32'd25000;
@@ -202,6 +202,8 @@ module xem6010_top_tb;
 	
 	// Test pattern
 	wire [9:0] test_pattern [NUMBER_OF_CHIPS-1:0];
+	assign test_pattern[0] = TEST_PATTERN_0;
+	assign test_pattern[1] = TEST_PATTERN_1;
 	
 
 	wire [15:0] NO_MASK = 16'hffff;
@@ -610,13 +612,24 @@ module xem6010_top_tb;
 		input [15:0] capture_number;
 		integer chip, frame, pattern, bin;
 		integer chip_offset, frame_offset, pattern_offset, bin_offset, offset;
+		integer unshuffled;
+		integer padding, packet_1, packet_2;
+		integer correct_packet_value;
+		integer failed;
 		begin
+		
+		// Keep track of failures
+		failed = 0;
 		
 			// Loop through each chip
 			for (chip=0;chip<NUMBER_OF_CHIPS;chip=chip+1) begin
 			
 				// Calculate the offset for the chip in the flat pipeout packet
 				chip_offset = chip * NUMBER_OF_FRAMES * PATTERNS_PER_FRAME * 150 * 32;
+				
+				// Find the correct value for the test pattern
+				correct_packet_value = test_pattern[chip];
+				$display("Correct packet value for chip %d is %b", chip, correct_packet_value);
 				
 				// Loop through each frame
 				for (frame=0;frame<NUMBER_OF_FRAMES;frame=frame+1) begin
@@ -639,15 +652,39 @@ module xem6010_top_tb;
 							// Calculate total offset for the value of the bin
 							offset = chip_offset + frame_offset + pattern_offset + bin_offset;
 							
-							// Calculate the pipe out value
+							// Unshuffle data out packet
+							unshuffled = { pipeOut_flat[offset +: 16], pipeOut_flat[offset + 16 +: 16] };
+							
+							// Get test packets
+							packet_1 = unshuffled[0 +: 10];
+							packet_2 = unshuffled[10 +: 10];
+							padding = unshuffled[20 +: 12];
 							
 							// Print the value
-							$display("PIPE OUT: Capture %0d, Chip %0d, Frame %0d, Pattern %0d, Bin %0d: %b %b", capture_number, chip, frame, pattern, bin, pipeOut_flat[offset +: 16], pipeOut_flat[offset + 16 +: 16]);
+							$display("PIPE OUT: Capture %0d, Chip %0d, Frame %0d, Pattern %0d, Bin %0d: %12b %10b %10b", capture_number, chip, frame, pattern, bin, padding, packet_2, packet_1);
+							
+							// Figure out if it's correct
+							if ((padding == 0) && (packet_2 == correct_packet_value) && (packet_1 == correct_packet_value)) begin
+								$display("EVALUATE: Capture %0d, Chip %0d, Frame %0d, Pattern %0d, Bin %0d is CORRECT", capture_number, chip, frame, pattern, bin);
+							end else begin
+								$display("EVALUATE: Capture %0d, Chip %0d, Frame %0d, Pattern %0d, Bin %0d is INCORRECT", capture_number, chip, frame, pattern, bin);
+								failed = failed + 1;
+							end
 							
 						end
 					end
 				end
 			end
+			
+			// Print the number of failures
+			if (failed == 0) begin
+				$display("Data out matches expected");
+			end else begin
+				$display("Data out does not match what was expected");
+				$display("%0d non-matching packets were found", failed);
+				$finish;
+			end
+			
 		end
 	endtask
 	
@@ -837,6 +874,7 @@ module xem6010_top_tb;
 		end
 		
 		// End sim
+		$display("Simulation completed successfully");
 		$finish;
 		
 		
