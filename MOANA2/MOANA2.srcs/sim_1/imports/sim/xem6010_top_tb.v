@@ -264,6 +264,22 @@ module xem6010_top_tb;
 	wire refclk;
 	wire rstasync;
 	
+	// DDR3 signals
+	wire 	[15:0] 		ddr3_dq;
+	wire 	[14:0] 		ddr3_addr;
+	wire 	[2:0]  		ddr3_ba;
+	wire          			ddr3_ras_n;
+	wire          			ddr3_cas_n;
+	wire          			ddr3_we_n;
+	wire          			ddr3_odt;
+	wire          			ddr3_cke;
+	wire 	[1:0]  		ddr3_dm;
+	wire 	[1:0]  		ddr3_dqs_p;
+	wire 	[1:0]  		ddr3_dqs_n;
+	wire          			ddr3_ck_p;
+	wire          			ddr3_ck_n;
+	wire          			ddr3_reset_n;
+	
 	//------------------------------------------------------------------------
 	// Begin okHostInterface simulation user configurable  global data
 	//------------------------------------------------------------------------
@@ -341,20 +357,10 @@ module xem6010_top_tb;
 		assign pipeOut_flat[(i+1)*8 +: 8] = pipeOut[i];
 		assign pipeOut_flat[i*8 +: 8] = pipeOut[i+1];
 	end endgenerate
-
-	
-	//------------------------------------------------------------------------
-	
-	// Continuously update the ScanBitsRd with the new test pattern
-//	generate for (i=0;i<NUMBER_OF_CHIPS;i=i+1) begin
-//		always @(*) begin
-//			ScanBitsRd[i][`DigitalCore_TestDataIn] = test_pattern[i];
-//		end
-//	end endgenerate
 	
 
 
-	// Instantiate the FPGA
+	// XEM7010
 	xem6010_top uut (
 		.hi_in(hi_in), 
 		.hi_out(hi_out), 
@@ -362,27 +368,28 @@ module xem6010_top_tb;
 		.hi_aa(hi_aa),
 		.hi_muxsel(hi_muxsel), 
 		.sys_clk_p(sys_clk_p), 
-		.sys_clk_n(sys_clk_n), 
-//		.ref_clk_pll(refclk_pll),
-//		.tx_refclk_mmcm(tx_refclk_pll),
+		.sys_clk_n(sys_clk_n),
 		.led(), 
-		.MC1(MC1)
+		.MC1(MC1),
+		.ddr3_dq(ddr3_dq),
+		.ddr3_addr(ddr3_addr),
+		.ddr3_ba(ddr3_ba),
+		.ddr3_ras_n(ddr3_ras_n),
+		.ddr3_cas_n(ddr3_cas_n),
+		.ddr3_we_n(ddr3_we_n),
+		.ddr3_odt(ddr3_odt),
+		.ddr3_cke(ddr3_cke),
+		.ddr3_dm(ddr3_dm),
+		.ddr3_dqs_p(ddr3_dqs_p),
+		.ddr3_dqs_n(ddr3_dqs_n),
+		.ddr3_ck_p(ddr3_ck_p),
+		.ddr3_ck_n(ddr3_ck_n),
+		.ddr3_reset_n(ddr3_reset_n)
+		
 	);
 	
 	
-	
-	
-	//-----------------------------------------------------------------------------------
-    //    Scan Chain Clock Generator
-    //-----------------------------------------------------------------------------------
-//    ScanClockGen    ClkG    (   .RefClk             (scan_clk),
-//                                .Reset              (s_reset_tb),
-//                                .ClkEn              (1'b1),
-//                                .SClkP              (s_clk_p_tb),
-//                                .SClkN              (s_clk_n_tb));    
-    //-----------------------------------------------------------------------------------
-	
-//	 ICs
+	// MOANA3 ICs
 	generate 
 		for (i = 0; i < NUMBER_OF_CHIPS; i = i+1) begin
 	
@@ -411,6 +418,29 @@ module xem6010_top_tb;
 			
 		end 
 	endgenerate
+	
+	// DDR3 SDRAM
+	ddr3  u_ddr3(
+			rst_n				(ddr3_reset_n),
+			ck					(ddr3_ck_p),
+			ck_n				(ddr3_ck_n),
+			cke				(ddr3_cke),
+			cs_n				(1'b0),
+			ras_n			(ddr3_ras_n),
+			cas_n			(ddr3_cas_n),
+			we_n				(ddr3_we_n),
+			dm_tdqs		(),
+			ba				(ddr3_ba),
+			addr				(ddr3_addr),
+			dq				(ddr3_dq),
+			dqs				(ddr3_dqs_p),
+			dqs_n			(ddr3_dqs_n),
+			tdqs_n			(),
+			odt				(ddr3_odt)
+);
+	
+	
+	
 	
 	task fpga_logic_reset;
 		begin
