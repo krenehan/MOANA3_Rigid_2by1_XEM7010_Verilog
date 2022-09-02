@@ -232,10 +232,10 @@ module xem6010_top(
 	wire																		tx_dataout												[NUMBER_OF_CHIPS-1:0];
 	
 	// FIFO to Computer Wires
-	wire		[2:0]															fifo_full														[NUMBER_OF_CHIPS-1:0];
-	wire		[2:0]															fifo_overflow												[NUMBER_OF_CHIPS-1:0];
-	wire		[2:0]															fifo_empty													[NUMBER_OF_CHIPS-1:0];
-	wire		[2:0]															fifo_underflow											[NUMBER_OF_CHIPS-1:0];
+	wire		[4:0]															fifo_full														[NUMBER_OF_CHIPS-1:0];
+	wire		[4:0]															fifo_overflow												[NUMBER_OF_CHIPS-1:0];
+	wire		[4:0]															fifo_empty													[NUMBER_OF_CHIPS-1:0];
+	wire		[4:0]															fifo_underflow											[NUMBER_OF_CHIPS-1:0];
 	
 	// FIFO to Computer Pipe
 	wire		[1:0]															pipeO_fifo_read;																					// Flag indicating outgoing data coming		  
@@ -245,7 +245,7 @@ module xem6010_top(
 	wire		[NUMBER_OF_CHIPS-1:0]							fifo_read;
 	
 	// FIFO to FIFO Wires				
-	wire		[2:0]															fifo_valid													[NUMBER_OF_CHIPS-1:0];
+	wire		[4:0]															fifo_valid													[NUMBER_OF_CHIPS-1:0];
 	wire		[7:0]															pipeO_fifo_data_8b									[NUMBER_OF_CHIPS-1:0];
 	wire		[31:0]														pipeO_fifo_data_32b									[NUMBER_OF_CHIPS-1:0];
 	wire		[31:0]														pipeO_fifo_data_32b_reversed					[NUMBER_OF_CHIPS-1:0];
