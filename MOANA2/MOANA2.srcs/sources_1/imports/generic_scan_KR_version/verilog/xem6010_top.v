@@ -249,6 +249,8 @@ module xem6010_top(
 	wire		[7:0]															pipeO_fifo_data_8b									[NUMBER_OF_CHIPS-1:0];
 	wire		[31:0]														pipeO_fifo_data_32b									[NUMBER_OF_CHIPS-1:0];
 	wire		[31:0]														pipeO_fifo_data_32b_reversed					[NUMBER_OF_CHIPS-1:0];
+	wire		[31:0]														pipeO_fifo_data_32b_remitted					[NUMBER_OF_CHIPS-1:0];
+	wire 	[127:0]														pipeO_fifo_data_128b								[NUMBER_OF_CHIPS-1:0];
 	wire		[15:0]														fifo_rd_data_count									[NUMBER_OF_CHIPS-1:0];
 	wire		[NUMBER_OF_CHIPS-1:0]										pad_captured;
 	wire																		data_loaded												[NUMBER_OF_CHIPS-1:0];
@@ -768,19 +770,48 @@ BUFGCTRL_ref_clk_mmcm_muxed_inst (
                 assign pipeO_fifo_data_32b_reversed[i][j] = pipeO_fifo_data_32b[i][31-j];
             end
             
+            // FIFO for prepping transfer to DRAM
+            fifo_W32_R128 fifo_2 	(
+            						.rst														(fifo_clr[i]),
+            						.wr_clk													(ti_clk),
+            						.din														(pipeO_fifo_data_32b_reversed[i]),
+            						.wr_en													(fifo_valid[i][1]),
+            						.rd_clk													(sys_clk),
+            						.rd_en													(~fifo_full[i][3]),
+            						.dout													(pipeO_fifo_data_128b[i]),
+            						.full														(fifo_full[i][2]),
+            						.empty													(fifo_empty[i][2]),
+            						.valid													(fifo_valid[i][2])
+            );
+            
+            // FIFO for collecting transfer from DRAM
+            fifo_W128_R32 fifo_3 	(
+            						.rst														(fifo_clr[i]),
+            						.wr_clk													(sys_clk),
+            						.din														(pipeO_fifo_data_128b[i]),
+            						.wr_en													(fifo_valid[i][2]),
+            						.rd_clk													(ti_clk),
+            						.rd_en													(~fifo_full[i][4]),
+            						.dout													(pipeO_fifo_data_32b_remitted[i]),
+            						.full														(fifo_full[i][3]),
+            						.empty													(fifo_empty[i][3]),
+            						.valid													(fifo_valid[i][3])
+            );
+            
+            
             // FIFO for prepping transfer to PC
-            fifo_W32_R16 fifo_2 		    (
+            fifo_W32_R16 fifo_4 		    (
 									.rst														(fifo_clr[i]),
 									.clk														(ti_clk),
-									.din														(pipeO_fifo_data_32b_reversed[i]),	// 8'bit in data
-									.wr_en													(fifo_valid[i][1]),
+									.din														(pipeO_fifo_data_32b_remitted[i]),	// 8'bit in data
+									.wr_en													(fifo_valid[i][3]),
 									.rd_en													(fifo_read[i]),
 									.dout													(pipeO_fifo_data_16b[i]),  // 16'bit out data
-									.full														(fifo_full[i][2]),
-									.overflow												(fifo_overflow[i][2]),
-									.empty													(fifo_empty[i][2]),
-									.valid													(fifo_valid[i][2]),
-									.underflow											(fifo_underflow[i][2]),
+									.full														(fifo_full[i][4]),
+									.overflow												(fifo_overflow[i][4]),
+									.empty													(fifo_empty[i][4]),
+									.valid													(fifo_valid[i][4]),
+									.underflow											(fifo_underflow[i][4]),
 									.rd_data_count 									(fifo_rd_data_count[i])
             );
 			
