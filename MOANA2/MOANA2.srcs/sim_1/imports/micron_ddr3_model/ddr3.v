@@ -208,9 +208,9 @@ module ddr3 (
     parameter TWPRE            =    0.90; // tWPRE      tCK   DQS Write Preamble
     parameter TWPST            =    0.30; // tWPST      tCK   DQS Write Postamble
     // Command and Address
-    integer   TZQCS;                      // tZQCS      tCK   ZQ Cal (Short) time
-    integer   TZQINIT;                    // tZQinit    tCK   ZQ Cal (Long) time
-    integer   TZQOPER;                    // tZQoper    tCK   ZQ Cal (Long) time
+    //integer   TZQCS;                      // tZQCS      tCK   ZQ Cal (Short) time
+    //integer   TZQINIT;                    // tZQinit    tCK   ZQ Cal (Long) time
+    //integer   TZQOPER;                    // tZQoper    tCK   ZQ Cal (Long) time
     parameter TCCD             =       4; // tCCD       tCK   Cas to Cas command delay
     parameter TCCD_DG          =       2; // tCCD_DG    tCK   Cas to Cas command delay to different group
     parameter TRAS_MAX         =    60e9; // tRAS       ps    Maximum Active to Precharge command time
@@ -652,8 +652,8 @@ module ddr3 (
         reg [COL_BITS - 1 : 0] col;
         reg [BA_BITS + ROW_BITS + COL_BITS - 1 : 0] addr;
         reg [BL_MAX * DQ_BITS - 1 : 0] data;
-        string _char;
         integer in, fio_status;
+        integer i;
 
         if (!$value$plusargs("model_data+%s", tmp_model_dir))
         begin
@@ -663,30 +663,11 @@ module ddr3 (
                 $time
             );
         end
-
-        for (integer i = 0; i < `BANKS; i = i + 1)
+		
+        for (i = 0; i < `BANKS; i = i + 1)
             memfd[i] = open_bank_file(i);
 
-        // Preload section
-    `ifdef mem_init
-        in = $fopen("mem_init.txt","r");
-        while (! $feof(in)) begin
-            fio_status = $fscanf(in, "%h %s %h", addr, _char, data);
-            if (fio_status != -1) begin // Check for blank line or EOF
-                bank = addr [BA_BITS + ROW_BITS + COL_BITS - 1 : ROW_BITS + COL_BITS];
-                row = addr [ROW_BITS + COL_BITS - 1 : COL_BITS];
-                col = addr [COL_BITS - 1 : 0];
-                memory_write (bank, row, col, data);
-                // Next 4 lines are for debug only
-                $display ("MEMORY_WRITE: Bank = %h, Row = %h, Col = %h, Data = %h", bank, row, col, data);
-                data = 'hx; // This is to reset data to verify memory_read
-                memory_read(bank, row, col, data);
-                $display ("MEMORY_READ: Bank = %h, Row = %h, Col = %h, Data = %h", bank, row, col, data);
-            end
-        end
-        $fclose(in);
-        //$finish;
-    `endif
+
     end
 `else
     reg     [BL_MAX*DQ_BITS-1:0] memory  [0:`MEM_SIZE-1];
@@ -774,9 +755,15 @@ module ddr3 (
     bufif1 buf_dq     [DQ_BITS-1:0]  (dq,      dq_out_dly,   dq_out_en_dly  & {DQ_BITS {out_en}});
     assign tdqs_n = {DQS_BITS{1'bz}};
 
-    assign TZQCS   = max( 64, ceil( 80000/tck_avg));
-    assign TZQINIT =  max(512, ceil(640000/tck_avg));
-    assign TZQOPER =  max(256, ceil(320000/tck_avg));
+    integer  TZQCS;
+    integer TZQINIT;
+    integer TZQOPER;
+    integer TDQSCK_DLLDIS;
+    always @(*) begin
+    	TZQCS = max( 64, ceil( 80000/tck_avg));
+    	TZQINIT =  max(512, ceil(640000/tck_avg));
+    	TZQOPER =  max(256, ceil(320000/tck_avg));
+    end
 
     initial begin
         if (BL_MAX < 2) 
@@ -849,12 +836,26 @@ module ddr3 (
             floor = number;
     endfunction
 
-    function int max( input int a, b );
-        max = (a < b) ? b : a;
+    function integer max;
+        input arg1;
+        input arg2;
+        integer arg1;
+        integer arg2;
+        if (arg1 > arg2)
+            max = arg1;
+        else
+            max = arg2;
     endfunction
 
-    function int min( input int a, b );
-        min = (a > b) ? b : a;
+    function integer min;
+        input arg1;
+        input arg2;
+        integer arg1;
+        integer arg2;
+        if (arg1 < arg2)
+            min = arg1;
+        else
+            min = arg2;
     endfunction
 
 `ifdef MAX_MEM
