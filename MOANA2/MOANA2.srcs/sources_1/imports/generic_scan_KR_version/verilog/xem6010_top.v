@@ -34,23 +34,23 @@ module xem6010_top(
 	output		wire		[7:0]			led,
 	
 	// User signals
-	inout		wire		[25:0]		MC1,
+	inout		wire		[25:0]		MC1
 	
 	// DRAM connections
-	inout  		wire 	[15:0] 		ddr3_dq,
-	output 		wire 	[14:0] 		ddr3_addr,
-	output 		wire 	[2:0]  		ddr3_ba,
-	output 		wire          			ddr3_ras_n,
-	output 		wire          			ddr3_cas_n,
-	output 		wire          			ddr3_we_n,
-	output 		wire          			ddr3_odt,
-	output 		wire          			ddr3_cke,
-	output 		wire 	[1:0]  		ddr3_dm,
-	inout  		wire 	[1:0]  		ddr3_dqs_p,
-	inout  		wire 	[1:0]  		ddr3_dqs_n,
-	output 		wire          			ddr3_ck_p,
-	output 		wire          			ddr3_ck_n,
-	output 		wire          			ddr3_reset_n
+//	inout  		wire 	[15:0] 		ddr3_dq,
+//	output 		wire 	[14:0] 		ddr3_addr,
+//	output 		wire 	[2:0]  		ddr3_ba,
+//	output 		wire          			ddr3_ras_n,
+//	output 		wire          			ddr3_cas_n,
+//	output 		wire          			ddr3_we_n,
+//	output 		wire          			ddr3_odt,
+//	output 		wire          			ddr3_cke,
+//	output 		wire 	[1:0]  		ddr3_dm,
+//	inout  		wire 	[1:0]  		ddr3_dqs_p,
+//	inout  		wire 	[1:0]  		ddr3_dqs_n,
+//	output 		wire          			ddr3_ck_p,
+//	output 		wire          			ddr3_ck_n,
+//	output 		wire          			ddr3_reset_n
 	
 	
     );
