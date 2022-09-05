@@ -691,13 +691,13 @@ module xem6010_top_tb;
 							padding = unshuffled[20 +: 12];
 							
 							// Print the value
-							$display("PIPE OUT: Capture %0d, Chip %0d, Frame %0d, Pattern %0d, Bin %0d: %12b %10b %10b", capture_number, chip, frame, pattern, bin, padding, packet_2, packet_1);
+//							$display("PIPE OUT: Capture %0d, Chip %0d, Frame %0d, Pattern %0d, Bin %0d: %12b %10b %10b", capture_number, chip, frame, pattern, bin, padding, packet_2, packet_1);
 							
 							// Figure out if it's correct
 							if ((padding == 0) && (packet_2 == correct_packet_value) && (packet_1 == correct_packet_value)) begin
-								$display("EVALUATE: Capture %0d, Chip %0d, Frame %0d, Pattern %0d, Bin %0d is CORRECT", capture_number, chip, frame, pattern, bin);
+								$display("CORRECT: Capture %0d, Chip %0d, Frame %0d, Pattern %0d, Bin %0d: %12b %10b %10b", capture_number, chip, frame, pattern, bin, padding, packet_2, packet_1);
 							end else begin
-								$display("EVALUATE: Capture %0d, Chip %0d, Frame %0d, Pattern %0d, Bin %0d is INCORRECT", capture_number, chip, frame, pattern, bin);
+								$display("INCORRECT: Capture %0d, Chip %0d, Frame %0d, Pattern %0d, Bin %0d: %12b %10b %10b", capture_number, chip, frame, pattern, bin, padding, packet_2, packet_1);
 								failed = failed + 1;
 							end
 							
@@ -717,104 +717,6 @@ module xem6010_top_tb;
 			
 		end
 	endtask
-	
-	
-	function [NUMBER_OF_CHIPS-1:0] check_data_packet;
-		input [15:0] capture_number;
-		input [PACKET_BITS-1:0] fifo_data_flat;
-		input [NUMBER_OF_CHIPS*10-1:0] pattern_flat;
-		reg [PACKET_BITS-1:0] packet_data;
-		reg [PACKET_BITS_UNPADDED-1:0] packet_data_unpadded;
-		reg [NUMBER_OF_CHIPS-1:0] passed;
-		reg [PACKET_BITS-1:0] shift_reg;
-		reg [31:0] i;
-		reg [9:0] pattern_holder;		
-		reg [31:0] chip, frame, pattern, bin;
-		reg [31:0] chip_offset, frame_offset, pattern_offset, bin_offset, offset;
-		begin
-			
-			// Display some info
-			$display("check_data_packet function called");
-			$display("Number Of Chips: %0d", NUMBER_OF_CHIPS);
-			$display("Packet Words: %d0", PACKET_WORDS);
-			$display("Packet Bytes: %0d", PACKET_BYTES);
-			$display("Packet Bits: %0d", PACKET_BITS);
-			$display("Packet Bits Unpadded: %0d", PACKET_BITS_UNPADDED);
-
-		
-			// Unpad the data
-			shift_reg = fifo_data_flat;
-			for (i=0;i<PACKET_WORDS;i=i+1) begin
-			
-				// Display information
-				$display("Shift register data is %b", shift_reg[31:0]);
-			
-				// Get 20 bits
-				packet_data_unpadded[i*20 +: 20] = shift_reg[19:0];
-				$display("Packet data is %b", packet_data_unpadded[i*20 +: 20]);
-				
-				// Shift out 32 bits
-				shift_reg = {32'b0, shift_reg[PACKET_BITS-1:32]};
-				
-			end
-			
-			// Assume passed
-			passed = {NUMBER_OF_CHIPS{1'b1}};
-			
-			// Check the packets
-			for (chip=0;chip<NUMBER_OF_CHIPS;chip=chip+1) begin
-				
-				// Chip index offset
-				chip_offset = chip * NUMBER_OF_FRAMES * PATTERNS_PER_FRAME * 300 * 10;
-				
-				for (frame=0;frame<NUMBER_OF_FRAMES;frame=frame+1) begin
-				
-					// Frame index offset
-					frame_offset = frame * PATTERNS_PER_FRAME * 300 * 10;
-					
-					for (pattern=0;pattern<PATTERNS_PER_FRAME;pattern=pattern+1) begin
-					
-					// Pattern index offset
-					pattern_offset = pattern * 300 * 10;
-					
-						for (bin=0;bin<300;bin=bin+1) begin
-						
-							// Bin offset
-							bin_offset = bin * 10;
-							
-							// Calculate the actual offset and check the packet is correct
-							offset = chip_offset + frame_offset + pattern_offset + bin_offset;
-							
-							// Calculate the correct test pattern value
-							pattern_holder = pattern_flat[10*chip +: 10] + capture_number + frame + pattern;
-							$display("PATTERN HOLDER: %d", pattern_holder);
-							
-							if (packet_data_unpadded[offset +: 10] == pattern_holder) begin
-								$display("TEST BIN PASS: Capture %0d, Chip %0d, Frame %0d, Pattern %0d, Bin %0d: %d", capture_number, chip, frame, pattern, bin, packet_data_unpadded[offset +: 10]);
-							end else begin
-								$display("TEST BIN FAIL: Capture %0d, Chip %0d, Frame %0d, Pattern %0d, Bin %0d: %d", capture_number, chip, frame, pattern, bin, packet_data_unpadded[offset +: 10]);
-								passed[chip] = 1'b0;
-							end
-							
-						end
-					end
-				end
-			end
-			
-			// Report results
-			for (chip=0;chip<NUMBER_OF_CHIPS;chip=chip+1) begin
-				if (passed[chip]) begin
-					$display("TEST CAPTURE PASS: Chip %0d, Capture %0d", chip, capture_number);
-				end else begin
-					$display("TEST CAPTURE FAIL: Chip %0d, Capture %0d", chip, capture_number);
-				end
-			end
-			
-			// Finish function
-			check_data_packet = passed;
-			
-		end
-	endfunction
 		
 		
 
