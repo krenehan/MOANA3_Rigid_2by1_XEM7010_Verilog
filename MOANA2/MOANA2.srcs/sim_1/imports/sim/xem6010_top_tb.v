@@ -103,7 +103,7 @@
 //-------------------------------------------------------------------------------------------
 
 `define  SIMULATION_ONLY
-`define TIME_MS 1000000
+`define TIME_OK_WAIT 50000
 
 module xem6010_top_tb;
 
@@ -111,7 +111,7 @@ module xem6010_top_tb;
 	localparam NUMBER_OF_CHIPS = 2;
 	localparam NUMBER_OF_CAPTURES = 2;
 	localparam NUMBER_OF_FRAMES = 16'd1;
-	localparam PATTERNS_PER_FRAME = 16'd1;
+	localparam PATTERNS_PER_FRAME = 16'd2;
 	localparam PAD_CAPTURED_MASK = 16'b11;
 	localparam MEASUREMENTS_PER_PATTERN = 32'd25000;
 	localparam TEST_PATTERN_0 = 10'd5;
@@ -186,7 +186,7 @@ module xem6010_top_tb;
     localparam MASTER_PIPE_BITS_PER_WORD = 32;
 	
 	// Calculated based on test settings
-	localparam MASTER_PIPE_WORDS_PER_TRANSFER = NUMBER_OF_FRAMES * PATTERNS_PER_FRAME * NUMBER_OF_BINS * BITS_PER_BIN / MASTER_PIPE_BITS_PER_WORD;
+	localparam MASTER_PIPE_WORDS_PER_TRANSFER = NUMBER_OF_BINS * BITS_PER_BIN / MASTER_PIPE_BITS_PER_WORD;
 	localparam WORDS_PER_TRANSFER = NUMBER_OF_FRAMES * PATTERNS_PER_FRAME * NUMBER_OF_BINS * BITS_PER_BIN / BITS_PER_WORD;
 	localparam BYTES_PER_TRANSFER = WORDS_PER_TRANSFER * 2;
 	
@@ -614,7 +614,7 @@ module xem6010_top_tb;
 				$display("TIME %0t: INFO: waiting for frame data received", $time);
 				UpdateWireOuts;
 				frame_controller_wire_out_register = GetWireOutValue(ADDR_WIREOUT_SIGNAL);
-				#(`TIME_MS);
+				#(`TIME_OK_WAIT);
 			end
 			$display("TIME %0t: INFO: received frame data received", $time);
 			
@@ -636,7 +636,7 @@ module xem6010_top_tb;
 				$display("TIME %0t: INFO: waiting for capture done", $time);
 				UpdateWireOuts;
 				frame_controller_wire_out_register = GetWireOutValue(ADDR_WIREOUT_SIGNAL);
-				#(`TIME_MS);
+				#(`TIME_OK_WAIT);
 			end
 			$display("TIME %0t: INFO: received capture done", $time);
 			
@@ -707,30 +707,30 @@ module xem6010_top_tb;
 		integer failed;
 		begin
 		
-		// Keep track of failures
-		failed = 0;
-		
-			// Loop through each chip
-			for (chip=0;chip<NUMBER_OF_CHIPS;chip=chip+1) begin
+			// Keep track of failures
+			failed = 0;
 			
-				// Calculate the offset for the chip in the flat pipeout packet
-				chip_offset = chip * NUMBER_OF_FRAMES * PATTERNS_PER_FRAME * 150 * 32;
+			// Loop through each frame
+			for (frame=0;frame<NUMBER_OF_FRAMES;frame=frame+1) begin
 				
-				// Find the correct value for the test pattern
-				correct_packet_value = test_pattern[chip];
-				$display("%0t: VERIFY DATA: CHIP %2d: %0b", $time, chip, correct_packet_value);
+				// Calculate the offset for the frame in the chip's packet
+				frame_offset = frame * NUMBER_OF_CHIPS * PATTERNS_PER_FRAME * 150 * 32;
 				
-				// Loop through each frame
-				for (frame=0;frame<NUMBER_OF_FRAMES;frame=frame+1) begin
+				// Loop through each pattern
+				for (pattern=0;pattern<PATTERNS_PER_FRAME;pattern=pattern+1) begin
 				
-					// Calculate the offset for the frame in the chip's packet
-					frame_offset = frame * PATTERNS_PER_FRAME * 150 * 32;
-					
-					// Loop through each pattern
-					for (pattern=0;pattern<PATTERNS_PER_FRAME;pattern=pattern+1) begin
-					
-					// Calculate the offset for the pattern in the frame packet
-					pattern_offset = pattern * 150 * 32;
+				// Calculate the offset for the pattern in the frame packet
+				pattern_offset = pattern * NUMBER_OF_CHIPS * 150 * 32;
+		
+					// Loop through each chip
+					for (chip=0;chip<NUMBER_OF_CHIPS;chip=chip+1) begin
+				
+						// Calculate the offset for the chip in the flat pipeout packet
+						chip_offset = chip * 150 * 32;
+				
+						// Find the correct value for the test pattern
+						correct_packet_value = test_pattern[chip];
+						$display("%0t: VERIFY DATA: CHIP %2d: %0b", $time, chip, correct_packet_value);
 					
 						// Loop through each bin
 						for (bin=0;bin<150;bin=bin+1) begin
@@ -859,7 +859,7 @@ module xem6010_top_tb;
 			// Check the data packet
 			//check_data_packet(k, pipeOut_flat, test_pattern_flat);
 			
-			#(`TIME_MS);
+			#(`TIME_OK_WAIT);
 			
 		end
 		
