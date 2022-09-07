@@ -260,11 +260,9 @@ module xem6010_top(
 	wire		[4:0]															fifo_underflow											[NUMBER_OF_CHIPS-1:0];
 	
 	// FIFO to Computer Pipe
-	wire		[1:0]															pipeO_fifo_read;																					// Flag indicating outgoing data coming		  
 	wire		[OKWIDTH-1:0]											pipeO_fifo_data_16b;		// ok2core Buffer to Opal Kelly HI Data Interface
 	wire		[OKWIDTH-1:0]											pipeO_fifo_data_16b_shuffled;		// Shuffle Byte1 and Byte2 going to PC
 	wire		[NUMBER_OF_CHIPS-1:0]							master_pipe_controller_read;
-	wire		[NUMBER_OF_CHIPS-1:0]							fifo_read;
 	
 	// FIFO to FIFO Wires				
 	wire		[4:0]															fifo_valid													[NUMBER_OF_CHIPS-1:0];
@@ -629,8 +627,8 @@ BUFGCTRL_ref_clk_mmcm_muxed_inst (
     //------------------------------------------------------------------------
      
      // WireOR for switching bus inputs into okHost
-	wire [16*17-1:0]  ok2x;
-	okWireOR # (.N(16)) wireOR (ok2, ok2x);
+	wire [14*17-1:0]  ok2x;
+	okWireOR # (.N(14)) wireOR (ok2, ok2x);
     
     // Wire In: Valid Address Range:  0x00-0x1F
     okWireIn ep00(.ok1(ok1), .ep_addr(ADDR_WIREIN_MSGCTRL), .ep_dataout(msg_ctrl));
@@ -668,9 +666,7 @@ BUFGCTRL_ref_clk_mmcm_muxed_inst (
 
     // Pipe Out: Valid Address Range:  0xA0-0xBF
     okPipeOut epA0 (.ok1(ok1), .ok2(ok2x[ 12*17 +: 17 ]), .ep_addr(ADDR_PIPEOUT_SCAN),.ep_read(pipeO_read), .ep_datain(pipeO_data));
-	okPipeOut epA1 (.ok1(ok1), .ok2(ok2x[ 13*17 +: 17 ]), .ep_addr(ADDR_PIPEOUT_FIFO_0),.ep_read(pipeO_fifo_read[0]), .ep_datain(pipeO_fifo_data_16b_shuffled[0]));
-	okPipeOut epA2 (.ok1(ok1), .ok2(ok2x[ 14*17 +: 17 ]), .ep_addr(ADDR_PIPEOUT_FIFO_1),.ep_read(pipeO_fifo_read[1]), .ep_datain(pipeO_fifo_data_16b_shuffled[1]));
-	okPipeOut epB0 (.ok1(ok1), .ok2(ok2x[ 15*17 +: 17 ]), .ep_addr(ADDR_PIPEOUT_FIFO_MASTER), .ep_read(pipeO_master_read), .ep_datain(pipeO_fifo_data_16b_shuffled));
+	okPipeOut epB0 (.ok1(ok1), .ok2(ok2x[ 13*17 +: 17 ]), .ep_addr(ADDR_PIPEOUT_FIFO_MASTER), .ep_read(pipeO_master_read), .ep_datain(pipeO_fifo_data_16b_shuffled));
     
 
     //-------------------------------------------------------------------------------
@@ -745,10 +741,6 @@ BUFGCTRL_ref_clk_mmcm_muxed_inst (
 		  
 				// Reset
 				assign fifo_clr[i] = msg_ctrl[4] | msg_ctrl[5];
-				
-				// Multiplexed read signal
-				assign pipeO_fifo_read[i] = 1'b0;
-//				assign fifo_read[i] = pipeO_fifo_read[i] | master_pipe_controller_read[i];
                             
                 // Flagout Module for catching padded bit and initializing data read
                 TxFlagOut                 fifo_flagout_1	(
@@ -811,7 +803,7 @@ BUFGCTRL_ref_clk_mmcm_muxed_inst (
 									.clk            (ti_clk),
 									.din            (pipeO_fifo_data_8b[i]),
 									.wr_en        (fifo_valid[i][0]),
-									.rd_en         (fifo_read[i]),
+									.rd_en         (master_pipe_controller_read[i]),
 									.dout           (pipeO_fifo_data_32b[i]),
 									.full            (fifo_full[i][1]),
 									.empty       (fifo_empty[i][1]),
@@ -834,7 +826,7 @@ BUFGCTRL_ref_clk_mmcm_muxed_inst (
                                     .NUMBER_OF_CHIPS      							(NUMBER_OF_CHIPS),
                                     .OKWIDTH            							(OKWIDTH),
                                     .DATA_WIDTH										(32),
-                                    .ChipCounterWidth   							(5))
+                                    .CHIP_COUNTER_WIDTH   							(5))
         MasterPipeControllerUnit(   
                                     .rst                							(rst),
                                     .clk             								(ti_clk),
@@ -842,7 +834,7 @@ BUFGCTRL_ref_clk_mmcm_muxed_inst (
                                     .pipeO_master_data  							(pipeO_master_data),
                                     .word_count         							(sw_in_stream_signals),
                                     .fifo_data_appended  							( {pipeO_fifo_data_32b_reversed[1], pipeO_fifo_data_32b_reversed[0]} ),
-                                    .fifo_read           							(fifo_read),
+                                    .fifo_read           							(master_pipe_controller_read),
                                     .prev_fifos_empty								( { fifo_empty[1][1], fifo_empty[0][1] }),
                                     .prev_fifos_empty_mask							(pad_captured_mask),
                                     .valid											(pipeO_master_valid)
