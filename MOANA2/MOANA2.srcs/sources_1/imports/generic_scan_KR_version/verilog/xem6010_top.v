@@ -34,23 +34,23 @@ module xem6010_top(
 	output		wire		[7:0]			led,
 	
 	// User signals
-	inout		wire		[25:0]		MC1,
+	inout		wire		[25:0]		MC1
 	
-	// DRAM connections
-	inout  		wire 	[15:0] 		ddr3_dq,
-	output 		wire 	[14:0] 		ddr3_addr,
-	output 		wire 	[2:0]  		ddr3_ba,
-	output 		wire          			ddr3_ras_n,
-	output 		wire          			ddr3_cas_n,
-	output 		wire          			ddr3_we_n,
-	output 		wire          			ddr3_odt,
-	output 		wire          			ddr3_cke,
-	output 		wire 	[1:0]  		ddr3_dm,
-	inout  		wire 	[1:0]  		ddr3_dqs_p,
-	inout  		wire 	[1:0]  		ddr3_dqs_n,
-	output 		wire          			ddr3_ck_p,
-	output 		wire          			ddr3_ck_n,
-	output 		wire          			ddr3_reset_n
+//	// DRAM connections
+//	inout  		wire 	[15:0] 		ddr3_dq,
+//	output 		wire 	[14:0] 		ddr3_addr,
+//	output 		wire 	[2:0]  		ddr3_ba,
+//	output 		wire          			ddr3_ras_n,
+//	output 		wire          			ddr3_cas_n,
+//	output 		wire          			ddr3_we_n,
+//	output 		wire          			ddr3_odt,
+//	output 		wire          			ddr3_cke,
+//	output 		wire 	[1:0]  		ddr3_dm,
+//	inout  		wire 	[1:0]  		ddr3_dqs_p,
+//	inout  		wire 	[1:0]  		ddr3_dqs_n,
+//	output 		wire          			ddr3_ck_p,
+//	output 		wire          			ddr3_ck_n,
+//	output 		wire          			ddr3_reset_n
 	
 	
     );
@@ -126,7 +126,8 @@ module xem6010_top(
 	wire																		pipeO_read;     																						// Flag indicating outgoing data coming
 	wire		[OKWIDTH-1:0]											pipeO_data;     																						// ok2core Buffer to Opal Kelly HI Data Interface 
 	wire																		pipeO_master_read;     																		// Flag indicating outgoing data coming
-	wire		[OKWIDTH-1:0]											pipeO_master_data;     																		// Master FIFO data 
+	wire																pipeO_master_valid;
+	wire		[32-1:0]											pipeO_master_data;     																		// Master FIFO data 
 	
 	// Wires
 	wire		[OKWIDTH-1:0]											msg_ctrl;     																							// Control Word Input (for soft reset, etc..)
@@ -246,11 +247,11 @@ module xem6010_top(
 	//  FIFO Signals
 	//------------------------------------------------------------------------
 	// Global FIFO wires
-	wire																		fifo_clr														[NUMBER_OF_CHIPS-1:0];
+	wire		[NUMBER_OF_CHIPS-1:0]											fifo_clr;
 	
 	// MOANA to FIFO Wires
-	wire																		tx_flagout													[NUMBER_OF_CHIPS-1:0];
-	wire																		tx_dataout												[NUMBER_OF_CHIPS-1:0];
+	wire		[NUMBER_OF_CHIPS-1:0]											tx_flagout;
+	wire		[NUMBER_OF_CHIPS-1:0]											tx_dataout;
 	
 	// FIFO to Computer Wires
 	wire		[4:0]															fifo_full														[NUMBER_OF_CHIPS-1:0];
@@ -260,8 +261,8 @@ module xem6010_top(
 	
 	// FIFO to Computer Pipe
 	wire		[1:0]															pipeO_fifo_read;																					// Flag indicating outgoing data coming		  
-	wire		[OKWIDTH-1:0]											pipeO_fifo_data_16b									[NUMBER_OF_CHIPS-1:0];		// ok2core Buffer to Opal Kelly HI Data Interface
-	wire		[OKWIDTH-1:0]											pipeO_fifo_data_16b_shuffled					[NUMBER_OF_CHIPS-1:0];		// Shuffle Byte1 and Byte2 going to PC
+	wire		[OKWIDTH-1:0]											pipeO_fifo_data_16b;		// ok2core Buffer to Opal Kelly HI Data Interface
+	wire		[OKWIDTH-1:0]											pipeO_fifo_data_16b_shuffled;		// Shuffle Byte1 and Byte2 going to PC
 	wire		[NUMBER_OF_CHIPS-1:0]							master_pipe_controller_read;
 	wire		[NUMBER_OF_CHIPS-1:0]							fifo_read;
 	
@@ -270,8 +271,8 @@ module xem6010_top(
 	wire		[7:0]															pipeO_fifo_data_8b									[NUMBER_OF_CHIPS-1:0];
 	wire		[31:0]														pipeO_fifo_data_32b									[NUMBER_OF_CHIPS-1:0];
 	wire		[31:0]														pipeO_fifo_data_32b_reversed					[NUMBER_OF_CHIPS-1:0];
-	wire		[31:0]														pipeO_fifo_data_32b_remitted					[NUMBER_OF_CHIPS-1:0];
-	wire 	[127:0]														pipeO_fifo_data_128b								[NUMBER_OF_CHIPS-1:0];
+	wire		[31:0]														pipeO_fifo_data_32b_remitted;
+	wire 	[127:0]														pipeO_fifo_data_128b;
 	wire		[15:0]														fifo_rd_data_count									[NUMBER_OF_CHIPS-1:0];
 	wire		[NUMBER_OF_CHIPS-1:0]										pad_captured;
 	wire																		data_loaded												[NUMBER_OF_CHIPS-1:0];
@@ -358,11 +359,11 @@ module xem6010_top(
 	//------------------------------------------------------------------------
 	// System clock differential to single-ended buffer
 	//------------------------------------------------------------------------
-//    IBUFDS clock_buff (
-//        .O(sys_clk), //buffer output
-//        .I(sys_clk_p), //buffer input 
-//        .IB(sys_clk_n) //  
-//    );
+    IBUFDS clock_buff (
+        .O(sys_clk), //buffer output
+        .I(sys_clk_p), //buffer input 
+        .IB(sys_clk_n) //  
+    );
 
 
 assign ref_clk_mmcm_muxed = clk_select[0] ? ref_clk_mmcm[0] : ref_clk_mmcm[1];
@@ -518,12 +519,23 @@ BUFGCTRL_ref_clk_mmcm_muxed_inst (
     assign number_of_frames =           sw_in_frame_signals[15:0];
     assign patterns_per_frame =         sw_in_pattern_signals[15:0];
     assign measurements_per_pattern =   {sw_in_measurementMSB_signals, sw_in_measurementLSB_signals};
-    assign pad_captured_mask =          sw_in_pad_catured_mask[15:0];
+    assign pad_captured_mask =          sw_in_pad_catured_mask[NUMBER_OF_CHIPS-1:0];
     
+    assign sw_out_signals[0]=			1'b0;
+    assign sw_out_signals[1]=			1'b0;
+    assign sw_out_signals[2]=			1'b0;
+    assign sw_out_signals[3]=			1'b0;
     assign sw_out_signals[5]=           capture_idle_ticlk_domain;
     assign sw_out_signals[6]=           frame_data_received_ticlk_domain;
     assign sw_out_signals[7]=           capture_running_ticlk_domain;
     assign sw_out_signals[8]=           capture_done_ticlk_domain;
+    assign sw_out_signals[9]=			1'b0;
+    assign sw_out_signals[10]=			1'b0;
+    assign sw_out_signals[11]=			1'b0;
+    assign sw_out_signals[12]=			1'b0;
+    assign sw_out_signals[13]=			1'b0;
+    assign sw_out_signals[14]=			1'b0;
+    assign sw_out_signals[15]=			1'b0;
     
     assign sw_trigger_out[0]=           read_trigger;
 	 
@@ -658,7 +670,7 @@ BUFGCTRL_ref_clk_mmcm_muxed_inst (
     okPipeOut epA0 (.ok1(ok1), .ok2(ok2x[ 12*17 +: 17 ]), .ep_addr(ADDR_PIPEOUT_SCAN),.ep_read(pipeO_read), .ep_datain(pipeO_data));
 	okPipeOut epA1 (.ok1(ok1), .ok2(ok2x[ 13*17 +: 17 ]), .ep_addr(ADDR_PIPEOUT_FIFO_0),.ep_read(pipeO_fifo_read[0]), .ep_datain(pipeO_fifo_data_16b_shuffled[0]));
 	okPipeOut epA2 (.ok1(ok1), .ok2(ok2x[ 14*17 +: 17 ]), .ep_addr(ADDR_PIPEOUT_FIFO_1),.ep_read(pipeO_fifo_read[1]), .ep_datain(pipeO_fifo_data_16b_shuffled[1]));
-	okPipeOut epB0 (.ok1(ok1), .ok2(ok2x[ 15*17 +: 17 ]), .ep_addr(ADDR_PIPEOUT_FIFO_MASTER), .ep_read(pipeO_master_read), .ep_datain(pipeO_master_data));
+	okPipeOut epB0 (.ok1(ok1), .ok2(ok2x[ 15*17 +: 17 ]), .ep_addr(ADDR_PIPEOUT_FIFO_MASTER), .ep_read(pipeO_master_read), .ep_datain(pipeO_fifo_data_16b_shuffled));
     
 
     //-------------------------------------------------------------------------------
@@ -735,7 +747,8 @@ BUFGCTRL_ref_clk_mmcm_muxed_inst (
 				assign fifo_clr[i] = msg_ctrl[4] | msg_ctrl[5];
 				
 				// Multiplexed read signal
-				assign fifo_read[i] = pipeO_fifo_read[i] | master_pipe_controller_read[i];
+				assign pipeO_fifo_read[i] = 1'b0;
+//				assign fifo_read[i] = pipeO_fifo_read[i] | master_pipe_controller_read[i];
                             
                 // Flagout Module for catching padded bit and initializing data read
                 TxFlagOut                 fifo_flagout_1	(
@@ -798,7 +811,7 @@ BUFGCTRL_ref_clk_mmcm_muxed_inst (
 									.clk            (ti_clk),
 									.din            (pipeO_fifo_data_8b[i]),
 									.wr_en        (fifo_valid[i][0]),
-									.rd_en         (~fifo_full[i][2]),
+									.rd_en         (fifo_read[i]),
 									.dout           (pipeO_fifo_data_32b[i]),
 									.full            (fifo_full[i][1]),
 									.empty       (fifo_empty[i][1]),
@@ -810,129 +823,132 @@ BUFGCTRL_ref_clk_mmcm_muxed_inst (
                 assign pipeO_fifo_data_32b_reversed[i][j] = pipeO_fifo_data_32b[i][31-j];
             end
             
-            // FIFO for prepping transfer to DRAM
-            fifo_W32_R128 fifo_2 	(
-            						.rst														(fifo_clr[i]),
-            						.wr_clk													(ti_clk),
-            						.din														(pipeO_fifo_data_32b_reversed[i]),
-            						.wr_en													(fifo_valid[i][1]),
-            						.rd_clk													(sys_clk),
-            						.rd_en													(~fifo_full[i][3]),
-            						.dout													(pipeO_fifo_data_128b[i]),
-            						.full														(fifo_full[i][2]),
-            						.empty													(fifo_empty[i][2]),
-            						.valid													(fifo_valid[i][2])
-            );
-            
-            // FIFO for collecting transfer from DRAM
-            fifo_W128_R32 fifo_3 	(
-            						.rst														(fifo_clr[i]),
-            						.wr_clk													(sys_clk),
-            						.din														(pipeO_fifo_data_128b[i]),
-            						.wr_en													(fifo_valid[i][2]),
-            						.rd_clk													(ti_clk),
-            						.rd_en													(~fifo_full[i][4]),
-            						.dout													(pipeO_fifo_data_32b_remitted[i]),
-            						.full														(fifo_full[i][3]),
-            						.empty													(fifo_empty[i][3]),
-            						.valid													(fifo_valid[i][3])
-            );
-            
-            
-            // FIFO for prepping transfer to PC
-            fifo_W32_R16 fifo_4 		    (
-									.rst														(fifo_clr[i]),
-									.clk														(ti_clk),
-									.din														(pipeO_fifo_data_32b_remitted[i]),	// 8'bit in data
-									.wr_en													(fifo_valid[i][3]),
-									.rd_en													(fifo_read[i]),
-									.dout													(pipeO_fifo_data_16b[i]),  // 16'bit out data
-									.full														(fifo_full[i][4]),
-									.overflow												(fifo_overflow[i][4]),
-									.empty													(fifo_empty[i][4]),
-									.valid													(fifo_valid[i][4]),
-									.underflow											(fifo_underflow[i][4]),
-									.rd_data_count 									(fifo_rd_data_count[i])
-            );
-			
-			// Shuffle bits before bus transfer
-            assign pipeO_fifo_data_16b_shuffled[i][15:8] = pipeO_fifo_data_16b[i][7:0];
-            assign pipeO_fifo_data_16b_shuffled[i][7:0]  = pipeO_fifo_data_16b[i][15:8];
-			
         end
     endgenerate
     
     
-    //-------------------------------------------------------------------------------
-    //  DDR3 MIG Module
-    //-------------------------------------------------------------------------------
-    ddr3_256_16 u_ddr3_256_16 (
-
-		// Memory interface ports to DRAM
-		.ddr3_addr                      (ddr3_addr),  			// output [14:0]        ddr3_addr
-		.ddr3_ba                        (ddr3_ba),  			// output [2:0]        	ddr3_ba
-		.ddr3_cas_n                     (ddr3_cas_n),  			// output            	ddr3_cas_n
-		.ddr3_ck_n                      (ddr3_ck_n),  			// output [0:0]        	ddr3_ck_n
-		.ddr3_ck_p                      (ddr3_ck_p),  			// output [0:0]        	ddr3_ck_p
-		.ddr3_cke                       (ddr3_cke),  			// output [0:0]        	ddr3_cke
-		.ddr3_ras_n                     (ddr3_ras_n),  			// output            	ddr3_ras_n
-		.ddr3_reset_n                   (ddr3_reset_n),  		// output            	ddr3_reset_n
-		.ddr3_we_n                      (ddr3_we_n),  			// output            	ddr3_we_n
-		.ddr3_dq                        (ddr3_dq),  			// inout [15:0]        	ddr3_dq
-		.ddr3_dqs_n                     (ddr3_dqs_n),  			// inout [1:0]        	ddr3_dqs_n
-		.ddr3_dqs_p                     (ddr3_dqs_p),  			// inout [1:0]        	ddr3_dqs_p
-		.ddr3_dm                        (ddr3_dm),  			// output [1:0]        	ddr3_dm
-		.ddr3_odt                       (ddr3_odt),  			// output [0:0]        	ddr3_odt
-		
-		.init_calib_complete            (init_calib_complete),  // output            	init_calib_complete
-		
-		// Application interface ports
-		.app_addr                       (app_addr),  			// input [28:0]        	app_addr
-		.app_cmd                        (app_cmd),  			// input [2:0]        	app_cmd
-		.app_en                         (app_en),  				// input                app_en
-		.app_wdf_data                   (app_wdf_data),  		// input [127:0]        app_wdf_data
-		.app_wdf_end                    (app_wdf_end),  		// input                app_wdf_end
-		.app_wdf_wren                   (app_wdf_wren),  		// input                app_wdf_wren
-		.app_rd_data                    (app_rd_data),  		// output [127:0]    	app_rd_data
-		.app_rd_data_end                (app_rd_data_end),  	// output            	app_rd_data_end
-		.app_rd_data_valid              (app_rd_data_valid),  	// output            	app_rd_data_valid
-		.app_rdy                        (app_rdy),  			// output            	app_rdy
-		.app_wdf_rdy                    (app_wdf_rdy),  		// output            	app_wdf_rdy
-		.app_sr_req                     (1'b0),  				// input            	app_sr_req
-		.app_ref_req                    (1'b0),  				// input            	app_ref_req
-		.app_zq_req                     (1'b0),  				// input            	app_zq_req
-		.app_sr_active                  (),  					// output            	app_sr_active
-		.app_ref_ack                    (),  					// output            	app_ref_ack
-		.app_zq_ack                     (),  					// output            	app_zq_ack
-		.ui_clk                         (sys_clk),  			// output            	ui_clk
-		.ui_clk_sync_rst                (),  					// output            	ui_clk_sync_rst
-		.app_wdf_mask                   (app_wdf_mask),  		// input [15:0]        	app_wdf_mask
-		
-		// System Clock Ports
-		.sys_clk_p                      (sys_clk_p),  			// input                sys_clk_p
-		.sys_clk_n                      (sys_clk_n),  			// input                sys_clk_n
-		.sys_rst                        (dram_rst) 				// input 				sys_rst
-);
-    
-	
 	//-------------------------------------------------------------------------------
     //  Master Data Pipe Out Control
     //-------------------------------------------------------------------------------
-    wire [3:0] chip_counter;
-    MasterPipeController    #   (   
-                                    .NumberOfChips      								(NUMBER_OF_CHIPS),
-                                    .OKWidth            									(OKWIDTH),
-                                    .ChipCounterWidth   							(4))
+    MasterPipeController_v2    #   (   
+                                    .NUMBER_OF_CHIPS      							(NUMBER_OF_CHIPS),
+                                    .OKWIDTH            							(OKWIDTH),
+                                    .DATA_WIDTH										(32),
+                                    .ChipCounterWidth   							(5))
         MasterPipeControllerUnit(   
-                                    .rst                										(rst),
-                                    .tx_clk             										(ti_clk),
-                                    .pipeO_master_read  							(pipeO_master_read),
+                                    .rst                							(rst),
+                                    .clk             								(ti_clk),
+                                    .pipeO_master_read  							(~fifo_full[0][2]),
                                     .pipeO_master_data  							(pipeO_master_data),
-                                    .word_count         								(sw_in_stream_signals),
-                                    .fifo_data_appended  							({pipeO_fifo_data_16b_shuffled[1], pipeO_fifo_data_16b_shuffled[0]}),
-                                    .chip_counter       								(chip_counter),
-                                    .fifo_read           									(master_pipe_controller_read)
+                                    .word_count         							(sw_in_stream_signals),
+                                    .fifo_data_appended  							( {pipeO_fifo_data_32b_reversed[1], pipeO_fifo_data_32b_reversed[0]} ),
+                                    .fifo_read           							(fifo_read),
+                                    .prev_fifos_empty								( { fifo_empty[1][1], fifo_empty[0][1] }),
+                                    .prev_fifos_empty_mask							(pad_captured_mask),
+                                    .valid											(pipeO_master_valid)
 	);
+	
+            
+	// FIFO for prepping transfer to DRAM
+	fifo_W32_R128 fifo_2 	(
+							.rst														(|fifo_clr),
+							.wr_clk													(ti_clk),
+							.din														(pipeO_master_data),
+							.wr_en													(pipeO_master_valid),
+							.rd_clk													(sys_clk),
+							.rd_en													(~fifo_full[0][3]),
+							.dout													(pipeO_fifo_data_128b),
+							.full														(fifo_full[0][2]),
+							.empty													(fifo_empty[0][2]),
+							.valid													(fifo_valid[0][2])
+	);
+	
+	// FIFO for collecting transfer from DRAM
+	fifo_W128_R32 fifo_3 	(
+							.rst														(|fifo_clr),
+							.wr_clk													(sys_clk),
+							.din														(pipeO_fifo_data_128b),
+							.wr_en													(fifo_valid[0][2]),
+							.rd_clk													(ti_clk),
+							.rd_en													(~fifo_full[0][4]),
+							.dout													(pipeO_fifo_data_32b_remitted),
+							.full														(fifo_full[0][3]),
+							.empty													(fifo_empty[0][3]),
+							.valid													(fifo_valid[0][3])
+	);
+	
+	
+	// FIFO for prepping transfer to PC
+	fifo_W32_R16 fifo_4 		    (
+							.rst														(|fifo_clr),
+							.clk														(ti_clk),
+							.din														(pipeO_fifo_data_32b_remitted),	// 8'bit in data
+							.wr_en													(fifo_valid[0][3]),
+							.rd_en													(pipeO_master_read),
+							.dout													(pipeO_fifo_data_16b),  // 16'bit out data
+							.full														(fifo_full[0][4]),
+							.overflow												(fifo_overflow[0][4]),
+							.empty													(fifo_empty[0][4]),
+							.valid													(fifo_valid[0][4]),
+							.underflow											(fifo_underflow[0][4]),
+							.rd_data_count 									(fifo_rd_data_count[0])
+	);
+	
+	// Shuffle bits before bus transfer
+	assign pipeO_fifo_data_16b_shuffled[15:8] = pipeO_fifo_data_16b[7:0];
+	assign pipeO_fifo_data_16b_shuffled[7:0]  = pipeO_fifo_data_16b[15:8];
+    
+    
+//    //-------------------------------------------------------------------------------
+//    //  DDR3 MIG Module
+//    //-------------------------------------------------------------------------------
+//    ddr3_256_16 u_ddr3_256_16 (
+
+//		// Memory interface ports to DRAM
+//		.ddr3_addr                      (ddr3_addr),  			// output [14:0]        ddr3_addr
+//		.ddr3_ba                        (ddr3_ba),  			// output [2:0]        	ddr3_ba
+//		.ddr3_cas_n                     (ddr3_cas_n),  			// output            	ddr3_cas_n
+//		.ddr3_ck_n                      (ddr3_ck_n),  			// output [0:0]        	ddr3_ck_n
+//		.ddr3_ck_p                      (ddr3_ck_p),  			// output [0:0]        	ddr3_ck_p
+//		.ddr3_cke                       (ddr3_cke),  			// output [0:0]        	ddr3_cke
+//		.ddr3_ras_n                     (ddr3_ras_n),  			// output            	ddr3_ras_n
+//		.ddr3_reset_n                   (ddr3_reset_n),  		// output            	ddr3_reset_n
+//		.ddr3_we_n                      (ddr3_we_n),  			// output            	ddr3_we_n
+//		.ddr3_dq                        (ddr3_dq),  			// inout [15:0]        	ddr3_dq
+//		.ddr3_dqs_n                     (ddr3_dqs_n),  			// inout [1:0]        	ddr3_dqs_n
+//		.ddr3_dqs_p                     (ddr3_dqs_p),  			// inout [1:0]        	ddr3_dqs_p
+//		.ddr3_dm                        (ddr3_dm),  			// output [1:0]        	ddr3_dm
+//		.ddr3_odt                       (ddr3_odt),  			// output [0:0]        	ddr3_odt
+		
+//		.init_calib_complete            (init_calib_complete),  // output            	init_calib_complete
+		
+//		// Application interface ports
+//		.app_addr                       (app_addr),  			// input [28:0]        	app_addr
+//		.app_cmd                        (app_cmd),  			// input [2:0]        	app_cmd
+//		.app_en                         (app_en),  				// input                app_en
+//		.app_wdf_data                   (app_wdf_data),  		// input [127:0]        app_wdf_data
+//		.app_wdf_end                    (app_wdf_end),  		// input                app_wdf_end
+//		.app_wdf_wren                   (app_wdf_wren),  		// input                app_wdf_wren
+//		.app_rd_data                    (app_rd_data),  		// output [127:0]    	app_rd_data
+//		.app_rd_data_end                (app_rd_data_end),  	// output            	app_rd_data_end
+//		.app_rd_data_valid              (app_rd_data_valid),  	// output            	app_rd_data_valid
+//		.app_rdy                        (app_rdy),  			// output            	app_rdy
+//		.app_wdf_rdy                    (app_wdf_rdy),  		// output            	app_wdf_rdy
+//		.app_sr_req                     (1'b0),  				// input            	app_sr_req
+//		.app_ref_req                    (1'b0),  				// input            	app_ref_req
+//		.app_zq_req                     (1'b0),  				// input            	app_zq_req
+//		.app_sr_active                  (),  					// output            	app_sr_active
+//		.app_ref_ack                    (),  					// output            	app_ref_ack
+//		.app_zq_ack                     (),  					// output            	app_zq_ack
+//		.ui_clk                         (sys_clk),  			// output            	ui_clk
+//		.ui_clk_sync_rst                (),  					// output            	ui_clk_sync_rst
+//		.app_wdf_mask                   (app_wdf_mask),  		// input [15:0]        	app_wdf_mask
+		
+//		// System Clock Ports
+//		.sys_clk_p                      (sys_clk_p),  			// input                sys_clk_p
+//		.sys_clk_n                      (sys_clk_n),  			// input                sys_clk_n
+//		.sys_rst                        (dram_rst) 				// input 				sys_rst
+//	);
     
     
     //-------------------------------------------------------------------------------
