@@ -87,13 +87,13 @@ module DigitalCore_DataTx_Padded_Sync(
     //-----------------------------------------------------------------------------------
     //  Assigns
     //-----------------------------------------------------------------------------------
-    if (OVERRIDE_DATAOUT == "False") begin
-		assign  TxData  = TestPattEnable ? {TestDataReps{TestDataIn}} : DataIn;
-	end else if (OVERRIDE_DATAOUT == "True") begin
+//    if (OVERRIDE_DATAOUT == "False") begin
+//		assign  TxData  = TestPattEnable ? {TestDataReps{TestDataIn}} : DataIn;
+//	end else if (OVERRIDE_DATAOUT == "True") begin
 		assign TxData = TestPattEnable ? test_pattern : DataIn;
-	end else begin
-		assign TxData = 1'bx;
-	end
+//	end else begin
+//		assign TxData = 1'bx;
+//	end
     //-----------------------------------------------------------------------------------
 
     //-----------------------------------------------------------------------------------
