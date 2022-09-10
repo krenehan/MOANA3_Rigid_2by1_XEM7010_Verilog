@@ -19,7 +19,9 @@ module DigitalCore_DataTx_Padded_Sync(
 
     ReadClkIn,
 	DataOut,	
-	LoadComplete
+	LoadComplete, 
+	
+	test_pattern
     );
 
     //-----------------------------------------------------------------------------------
@@ -28,6 +30,7 @@ module DigitalCore_DataTx_Padded_Sync(
     
     parameter DataInWidth = 250;
     parameter SyncStages = 3;
+    parameter OVERRIDE_DATAOUT = "False";
 
     localparam CntWidth = $clog2(DataInWidth);
     localparam DummyBits = CntWidth-1;
@@ -48,6 +51,7 @@ module DigitalCore_DataTx_Padded_Sync(
     output reg  							        DataOut;
     
     output wire                                     LoadComplete;
+    input wire		[DataInWidth-1:0]				test_pattern;
 
     //-----------------------------------------------------------------------------------
     //  Internal Wires
@@ -83,7 +87,13 @@ module DigitalCore_DataTx_Padded_Sync(
     //-----------------------------------------------------------------------------------
     //  Assigns
     //-----------------------------------------------------------------------------------
-	assign  TxData  = TestPattEnable ? {TestDataReps{TestDataIn}} : DataIn;
+    if (OVERRIDE_DATAOUT == "False") begin
+		assign  TxData  = TestPattEnable ? {TestDataReps{TestDataIn}} : DataIn;
+	end else if (OVERRIDE_DATAOUT == "True") begin
+		assign TxData = TestPattEnable ? test_pattern : DataIn;
+	end else begin
+		assign TxData = 1'bx;
+	end
     //-----------------------------------------------------------------------------------
 
     //-----------------------------------------------------------------------------------
