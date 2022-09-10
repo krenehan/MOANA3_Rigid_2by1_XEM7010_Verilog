@@ -34,24 +34,27 @@ module xem6010_top(
 	output		wire		[7:0]			led,
 	
 	// User signals
-	inout		wire		[25:0]		MC1
+	inout		wire		[25:0]		MC1,
 	
-//	// DRAM connections
-//	inout  		wire 	[15:0] 		ddr3_dq,
-//	output 		wire 	[14:0] 		ddr3_addr,
-//	output 		wire 	[2:0]  		ddr3_ba,
-//	output 		wire          			ddr3_ras_n,
-//	output 		wire          			ddr3_cas_n,
-//	output 		wire          			ddr3_we_n,
-//	output 		wire          			ddr3_odt,
-//	output 		wire          			ddr3_cke,
-//	output 		wire 	[1:0]  		ddr3_dm,
-//	inout  		wire 	[1:0]  		ddr3_dqs_p,
-//	inout  		wire 	[1:0]  		ddr3_dqs_n,
-//	output 		wire          			ddr3_ck_p,
-//	output 		wire          			ddr3_ck_n,
-//	output 		wire          			ddr3_reset_n
+	// DRAM connections
+	inout  		wire 	[15:0] 		ddr3_dq,
+	output 		wire 	[14:0] 		ddr3_addr,
+	output 		wire 	[2:0]  		ddr3_ba,
+	output 		wire          			ddr3_ras_n,
+	output 		wire          			ddr3_cas_n,
+	output 		wire          			ddr3_we_n,
+	output 		wire          			ddr3_odt,
+	output 		wire          			ddr3_cke,
+	output 		wire 	[1:0]  		ddr3_dm,
+	inout  		wire 	[1:0]  		ddr3_dqs_p,
+	inout  		wire 	[1:0]  		ddr3_dqs_n,
+	output 		wire          			ddr3_ck_p,
+	output 		wire          			ddr3_ck_n,
+	output 		wire          			ddr3_reset_n, 
 	
+	// Added for sims
+	output reg sys_rst, 
+	output wire init_calib_complete
 	
     );
 
@@ -75,7 +78,8 @@ module xem6010_top(
     localparam  	ADDR_WIREIN_FRAMECTRL 							=       	8'h07;																			// Wire in for frame control
     localparam  	ADDR_WIREIN_TRANSFERSIZE 						=       	8'h08;																			// Wire in for specifying expected packet size of emitter pattern 
     localparam  	ADDR_WIREIN_STREAM 									=			8'h09;																			// Wire in for specifying number of transfers to read data
-    localparam 	ADDR_WIREIN_PAD_CAPTURED_MASK				=			8'h10;																			// Wire in for masking pad_captured signal based on functional ICs
+    localparam 		ADDR_WIREIN_PAD_CAPTURED_MASK				=			8'h10;																			// Wire in for masking pad_captured signal based on functional ICs
+    localparam 		ADDR_WIREIN_RAM_MODE						= 8'h11;
     localparam  	ADDR_WIREOUT_STATUS 								=			8'h20;																			// Wire out for FPGA status
     localparam  	ADDR_WIREOUT_SIGNAL 								=			8'h21;																			// Wire out for direct python signal monitoring
 	localparam  	ADDR_WIREOUT_FIFOC0F2 							=	        8'h22;																			// Data count for Chip 0, FIFO 1
@@ -85,6 +89,7 @@ module xem6010_top(
     localparam  	ADDR_WIREOUT_EMITTERPATTERNMSB 			= 			8'h26;																			// Emitter pattern register bank MSB
 	localparam 	ADDR_WIREOUT_FIFOSIZE 								= 			8'h27;																			// Max number of words in backend FIFO
 	localparam	ADDR_WIREOUT_FCSTATE								=			8'h28;																			// Wire out for frame controller state
+    localparam ADDR_WIREOUT_RAM_STATUS = 8'h29;
     localparam  	ADDR_TRIGGERIN_DATASTREAMREADACK 		=      	8'h40;																			// Trigger in for enabling data stream
     localparam  	ADDR_TRIGGEROUT_DATASTREAMREAD 		=			8'h60;																			// Trigger out for data readout during streaming mode
     localparam  	ADDR_PIPEIN_SCAN 										=			8'h80;																			// Pipe in for scan
@@ -107,10 +112,8 @@ module xem6010_top(
 	wire																		sys_clk;
 	wire		[NUMBER_OF_REF_CLKS-1:0]						ref_clk_mmcm;     																					// mmcm ref clock outputs 
 	wire																		ref_clk_mmcm_muxed;     																		// 2:1 muxed ref clock outputs 
-	`ifndef SIMULATION_ONLY
 	wire																		tx_refclk_mmcm;     																				// 12.5MHz clock from the MMCM 
 	wire																		ref_clk_pll;																							// ref clock pll (25,50, or 100MHz)
-	`endif
 	wire																		tx_refclk_pll;
 	wire																		ref_clk_mmcm_enable;
 	wire																		mmcm_rst;
@@ -139,8 +142,10 @@ module xem6010_top(
 	wire		[OKWIDTH-1:0]											sw_in_measurementMSB_signals;															// Signals for controlling measurements per pattern MSB
 	wire		[OKWIDTH-1:0]											sw_in_frame_control_signals;     															// Signals for controlling the frame controller
     wire		[OKWIDTH-1:0]           								sw_in_pad_catured_mask;               														// Signals for masking pad_captured signal for non-functional chips
+	wire		[OKWIDTH-1:0]											sw_in_ram_mode;																				// Signals for controlling RAM read and write mode
 	wire		[OKWIDTH-1:0]											sw_in_stream_signals;     																		// Signal for indicating the number of 16 bit transfers to read per chip (frames*patterns_per_frame*4800/16)
 	wire		[OKWIDTH-1:0]											sw_out_signals;     																				// Signals directly output to python software
+	wire		[OKWIDTH-1:0]											sw_out_ram_status;
 	wire		[OKWIDTH-1:0]											cmd_fsm_state;     																				// Error message register for Scan Interface
 	wire		[OKWIDTH-1:0]											msg_stat;     																						// Status Bits for observation & outputs
 	wire		[OKWIDTH-1:0]											fifo_stat;																								// FIFO status bits
@@ -341,9 +346,24 @@ module xem6010_top(
 	wire app_rdy;
 	wire app_wdf_rdy;
 	wire [15:0] app_wdf_mask;
-//	wire dram_clk;
-	wire dram_rst;
-	wire init_calib_complete;
+	//reg sys_rst;
+	wire sys_rst_sync;
+	//wire init_calib_complete;
+	
+	wire rwc_read;
+	wire rrc_write;
+	wire [127:0] rrc_data;
+	wire ram_mode_read;
+	wire ram_mode_write;
+	reg ram_reset_active;
+	wire [7:0] rwc_ib_rd_count;
+	wire [7:0] rrc_ob_wr_count;
+	
+	assign ram_mode_read = sw_in_ram_mode[0];
+	assign ram_mode_write = sw_in_ram_mode[1];
+	assign sw_out_ram_status[0] = ram_reset_active;
+	
+	always @(posedge ti_clk) ram_reset_active <= sys_rst_sync;
 	
 	//------------------------------------------------------------------------
 	// Debug signals
@@ -357,11 +377,11 @@ module xem6010_top(
 	//------------------------------------------------------------------------
 	// System clock differential to single-ended buffer
 	//------------------------------------------------------------------------
-    IBUFDS clock_buff (
-        .O(sys_clk), //buffer output
-        .I(sys_clk_p), //buffer input 
-        .IB(sys_clk_n) //  
-    );
+//    IBUFDS clock_buff (
+//        .O(sys_clk), //buffer output
+//        .I(sys_clk_p), //buffer input 
+//        .IB(sys_clk_n) //  
+//    );
 
 
 assign ref_clk_mmcm_muxed = clk_select[0] ? ref_clk_mmcm[0] : ref_clk_mmcm[1];
@@ -405,7 +425,7 @@ BUFGCTRL_ref_clk_mmcm_muxed_inst (
     // User Interface Connections for Scan Chain
     //------------------------------------------------------------------------
     // Hardware Inputs / Outputs
-    assign rst 				=			sw_rst;     									// global reset (active high)
+    assign rst 				=			sw_rst | sys_rst_sync;     									// global reset (active high)
     
     // Control/Config Inputs
     assign clr_inbuf 		=			msg_ctrl[1];            					// clear input buffer 
@@ -627,8 +647,8 @@ BUFGCTRL_ref_clk_mmcm_muxed_inst (
     //------------------------------------------------------------------------
      
      // WireOR for switching bus inputs into okHost
-	wire [14*17-1:0]  ok2x;
-	okWireOR # (.N(14)) wireOR (ok2, ok2x);
+	wire [15*17-1:0]  ok2x;
+	okWireOR # (.N(15)) wireOR (ok2, ok2x);
     
     // Wire In: Valid Address Range:  0x00-0x1F
     okWireIn ep00(.ok1(ok1), .ep_addr(ADDR_WIREIN_MSGCTRL), .ep_dataout(msg_ctrl));
@@ -642,6 +662,7 @@ BUFGCTRL_ref_clk_mmcm_muxed_inst (
     okWireIn ep08(.ok1(ok1), .ep_addr(ADDR_WIREIN_TRANSFERSIZE), .ep_dataout(emitter_pattern_transfer_size));
     okWireIn ep09(.ok1(ok1), .ep_addr(ADDR_WIREIN_STREAM), .ep_dataout(sw_in_stream_signals));
 	okWireIn ep010(.ok1(ok1), .ep_addr(ADDR_WIREIN_PAD_CAPTURED_MASK), .ep_dataout(sw_in_pad_catured_mask));
+	okWireIn ep011(.ok1(ok1), .ep_addr(ADDR_WIREIN_RAM_MODE), .ep_dataout(sw_in_ram_mode));
 
     // Wire Out: Valid Address Range:  0x20-0x3F
     okWireOut ep20 (.ok1(ok1), .ok2(ok2x[ 0*17 +: 17 ]), .ep_addr(ADDR_WIREOUT_STATUS), .ep_datain(msg_stat));
@@ -653,20 +674,21 @@ BUFGCTRL_ref_clk_mmcm_muxed_inst (
     okWireOut ep28 (.ok1(ok1), .ok2(ok2x[ 6*17 +: 17 ]), .ep_addr(ADDR_WIREOUT_EMITTERPATTERNMSB), .ep_datain(emitter_pattern_register_bank[31:16]));
 	okWireOut ep29 (.ok1(ok1), .ok2(ok2x[ 7*17 +: 17 ]), .ep_addr(ADDR_WIREOUT_FIFOSIZE), .ep_datain(16'd32767));
 	okWireOut ep30 (.ok1(ok1), .ok2(ok2x[ 8*17 +: 17 ]), .ep_addr(ADDR_WIREOUT_FCSTATE), .ep_datain( {6'b0, fc_state} ));
+	okWireOut ep31 (.ok1(ok1), .ok2(ok2x[ 9*17 +: 17 ]), .ep_addr(ADDR_WIREOUT_RAM_STATUS), .ep_datain( sw_out_ram_status));
     
     // Trigger In: Valid Address Range (0x40 - 0x5F)
     okTriggerIn ep40 (.ok1(ok1), .ep_addr(ADDR_TRIGGERIN_DATASTREAMREADACK), .ep_clk(refclk_int), .ep_trigger(sw_trigger_in));
     
     // Trigger Out: Valid Address Range (0x60-0x7F)
-    okTriggerOut ep60 (.ok1(ok1), .ok2(ok2x[ 9*17 +: 17 ]), .ep_addr(ADDR_TRIGGEROUT_DATASTREAMREAD), .ep_clk(refclk_int), .ep_trigger(sw_trigger_out));
+    okTriggerOut ep60 (.ok1(ok1), .ok2(ok2x[ 10*17 +: 17 ]), .ep_addr(ADDR_TRIGGEROUT_DATASTREAMREAD), .ep_clk(refclk_int), .ep_trigger(sw_trigger_out));
 
     // Pipe In: Valid Address Range:  0x80-0x9F
-    okPipeIn ep80 (.ok1(ok1), .ok2(ok2x[ 10*17 +: 17 ]), .ep_addr(ADDR_PIPEIN_SCAN), .ep_write(pipeI_write), .ep_dataout(pipeI_data));
-    okPipeIn ep81 (.ok1(ok1), .ok2(ok2x[ 11*17 +: 17 ]), .ep_addr(ADDR_PIPEIN_PATTERN), .ep_write(pipeI_emitter_pattern_write), .ep_dataout(pipeI_emitter_pattern_data));
+    okPipeIn ep80 (.ok1(ok1), .ok2(ok2x[ 11*17 +: 17 ]), .ep_addr(ADDR_PIPEIN_SCAN), .ep_write(pipeI_write), .ep_dataout(pipeI_data));
+    okPipeIn ep81 (.ok1(ok1), .ok2(ok2x[ 12*17 +: 17 ]), .ep_addr(ADDR_PIPEIN_PATTERN), .ep_write(pipeI_emitter_pattern_write), .ep_dataout(pipeI_emitter_pattern_data));
 
     // Pipe Out: Valid Address Range:  0xA0-0xBF
-    okPipeOut epA0 (.ok1(ok1), .ok2(ok2x[ 12*17 +: 17 ]), .ep_addr(ADDR_PIPEOUT_SCAN),.ep_read(pipeO_read), .ep_datain(pipeO_data));
-	okPipeOut epB0 (.ok1(ok1), .ok2(ok2x[ 13*17 +: 17 ]), .ep_addr(ADDR_PIPEOUT_FIFO_MASTER), .ep_read(pipeO_master_read), .ep_datain(pipeO_fifo_data_16b_shuffled));
+    okPipeOut epA0 (.ok1(ok1), .ok2(ok2x[ 13*17 +: 17 ]), .ep_addr(ADDR_PIPEOUT_SCAN),.ep_read(pipeO_read), .ep_datain(pipeO_data));
+	okPipeOut epB0 (.ok1(ok1), .ok2(ok2x[ 14*17 +: 17 ]), .ep_addr(ADDR_PIPEOUT_FIFO_MASTER), .ep_read(pipeO_master_read), .ep_datain(pipeO_fifo_data_16b_shuffled));
     
 
     //-------------------------------------------------------------------------------
@@ -741,8 +763,10 @@ BUFGCTRL_ref_clk_mmcm_muxed_inst (
 		  
 				// Reset
 				assign fifo_clr[i] = msg_ctrl[4] | msg_ctrl[5];
-                            
+                
+                //-------------------------------------------------------------------------------
                 // Flagout Module for catching padded bit and initializing data read
+                //-------------------------------------------------------------------------------
                 TxFlagOut                 fifo_flagout_1	(
                                                 .rst(fifo_clr[i]),                                             
                                                 .chip_rst(pad_rstasync),
@@ -756,7 +780,10 @@ BUFGCTRL_ref_clk_mmcm_muxed_inst (
                                                 .blocking(blocking[i])
                 );
 				
+				
+				//-------------------------------------------------------------------------------
 				// FIFO for storing bits that accumulate due to padding 
+				//-------------------------------------------------------------------------------
 				fifo_W1_R1   pad_fifo         (
                                                             .rst				        (fifo_clr[i]),
                                                             .clk				        (tx_refclk_int),
@@ -769,7 +796,10 @@ BUFGCTRL_ref_clk_mmcm_muxed_inst (
                                                             .dout				    (pad_fifo_data[i])
 				);
 				
+				
+				//-------------------------------------------------------------------------------
 				// Padding module for translating 20b bin data to 32b bin data
+				//-------------------------------------------------------------------------------
 				TxDataOutPadding pad_unit   (
 															.rst				(fifo_clr[i]),
 															.clk				(tx_refclk_int),
@@ -781,31 +811,41 @@ BUFGCTRL_ref_clk_mmcm_muxed_inst (
 															.next_fifo_wr_en(tx_flagout_padded[i])
 				);
             
+            
+            //-------------------------------------------------------------------------------
             // FIFO for assembling bytes from bitstream
+            //-------------------------------------------------------------------------------
             fifo_W1_R8 	fifo_0 		    (
                                             .rst 				(fifo_clr[i]),
+                                            
                                             .wr_clk				(tx_refclk_int),
-                                            .rd_clk 			(ti_clk),
-                                            .din 				(tx_dataout_padded[i]),	// 1'bit in data
                                             .wr_en 				(tx_flagout_padded[i]),
-                                            .rd_en 				(~fifo_full[i][1]),
-                                            .dout 				(pipeO_fifo_data_8b[i]),  // 8'bit out data
+                                            .din 				(tx_dataout_padded[i]),
                                             .full 				(fifo_full[i][0]),
                                             .overflow 			(fifo_overflow[i][0]),
+                                            
+                                            .rd_clk 			(ti_clk),
+                                            .rd_en 				(~fifo_full[i][1]),
+                                            .dout 				(pipeO_fifo_data_8b[i]),  // 8'bit out data
                                             .empty 				(fifo_empty[i][0]),
                                             .valid 				(fifo_valid[i][0]),
                                             .underflow 			(fifo_underflow[i][0])
             );
             
+            
+            //-------------------------------------------------------------------------------
             // FIFO for assembling uint32 from bytes
+            //-------------------------------------------------------------------------------
             fifo_W8_R32     fifo_1  (
 									.rst            (fifo_clr[i]),
 									.clk            (ti_clk),
-									.din            (pipeO_fifo_data_8b[i]),
+									
 									.wr_en        (fifo_valid[i][0]),
+									.din            (pipeO_fifo_data_8b[i]),
+									.full            (fifo_full[i][1]),
+									
 									.rd_en         (master_pipe_controller_read[i]),
 									.dout           (pipeO_fifo_data_32b[i]),
-									.full            (fifo_full[i][1]),
 									.empty       (fifo_empty[i][1]),
 									.valid          (fifo_valid[i][1])
            );
@@ -841,106 +881,177 @@ BUFGCTRL_ref_clk_mmcm_muxed_inst (
 	);
 	
             
-	// FIFO for prepping transfer to DRAM
+	//-------------------------------------------------------------------------------
+    //  FIFO for passing data to DRAM
+    //-------------------------------------------------------------------------------
 	fifo_W32_R128 fifo_2 	(
-							.rst														(|fifo_clr),
+							.rst													(|fifo_clr),
+							
 							.wr_clk													(ti_clk),
-							.din														(pipeO_master_data),
 							.wr_en													(pipeO_master_valid),
+							.din													(pipeO_master_data),
+							.full													(fifo_full[0][2]),
+							.wr_data_count											(), // [9:0]
+							
 							.rd_clk													(sys_clk),
-							.rd_en													(~fifo_full[0][3]),
+							.rd_en													(rwc_read),
 							.dout													(pipeO_fifo_data_128b),
-							.full														(fifo_full[0][2]),
 							.empty													(fifo_empty[0][2]),
-							.valid													(fifo_valid[0][2])
+							.valid													(fifo_valid[0][2]),
+							.rd_data_count											(rwc_ib_rd_count) //[7:0]
 	);
 	
-	// FIFO for collecting transfer from DRAM
+	
+	//-------------------------------------------------------------------------------
+    //  DRAM Read and Write Controller
+    //-------------------------------------------------------------------------------
+	ddr3_test ddr3_tb  		(
+							.clk                (sys_clk),
+							.reset              (rst),
+							.reads_en           (ram_mode_read),
+							.writes_en          (ram_mode_write),
+							.calib_done         (init_calib_complete),
+							
+							.ib_re              (rwc_read),
+							.ib_data            (pipeO_fifo_data_128b),
+							.ib_count           (rwc_ib_rd_count),
+							.ib_valid           (fifo_valid[0][2]),
+							.ib_empty           (fifo_empty[0][2]),
+							
+							.ob_we              (rrc_write),
+							.ob_data            (rrc_data),
+							.ob_count           (rrc_ob_wr_count),
+							.ob_full            (fifo_full[0][3]),
+							
+							.app_rdy            (app_rdy),
+							.app_en             (app_en),
+							.app_cmd            (app_cmd),
+							.app_addr           (app_addr),
+							
+							.app_rd_data        (app_rd_data),
+							.app_rd_data_end    (app_rd_data_end),
+							.app_rd_data_valid  (app_rd_data_valid),
+							
+							.app_wdf_rdy        (app_wdf_rdy),
+							.app_wdf_wren       (app_wdf_wren),
+							.app_wdf_data       (app_wdf_data),
+							.app_wdf_end        (app_wdf_end),
+							.app_wdf_mask       (app_wdf_mask)
+	
+	);
+	
+	
+    //-------------------------------------------------------------------------------
+    //  DDR3 MIG Module Reset
+    //-------------------------------------------------------------------------------
+	reg [31:0] rst_cnt;
+	initial rst_cnt = 32'b0;
+	always @(posedge ti_clk) begin
+		if(rst_cnt < 32'h100) begin
+			rst_cnt <= rst_cnt + 1;
+			sys_rst <= 1'b1;
+		end else begin
+			sys_rst <= 1'b0;
+		end
+	end
+	
+	
+    //-------------------------------------------------------------------------------
+    //  DDR3 MIG Module
+    //-------------------------------------------------------------------------------
+    ddr3_256_16 u_ddr3_256_16 (
+
+		// Memory interface ports to DRAM
+		.ddr3_addr                      (ddr3_addr),  			// output [14:0]        ddr3_addr
+		.ddr3_ba                        (ddr3_ba),  			// output [2:0]        	ddr3_ba
+		.ddr3_cas_n                     (ddr3_cas_n),  			// output            	ddr3_cas_n
+		.ddr3_ck_n                      (ddr3_ck_n),  			// output [0:0]        	ddr3_ck_n
+		.ddr3_ck_p                      (ddr3_ck_p),  			// output [0:0]        	ddr3_ck_p
+		.ddr3_cke                       (ddr3_cke),  			// output [0:0]        	ddr3_cke
+		.ddr3_ras_n                     (ddr3_ras_n),  			// output            	ddr3_ras_n
+		.ddr3_reset_n                   (ddr3_reset_n),  		// output            	ddr3_reset_n
+		.ddr3_we_n                      (ddr3_we_n),  			// output            	ddr3_we_n
+		.ddr3_dq                        (ddr3_dq),  			// inout [15:0]        	ddr3_dq
+		.ddr3_dqs_n                     (ddr3_dqs_n),  			// inout [1:0]        	ddr3_dqs_n
+		.ddr3_dqs_p                     (ddr3_dqs_p),  			// inout [1:0]        	ddr3_dqs_p
+		.ddr3_dm                        (ddr3_dm),  			// output [1:0]        	ddr3_dm
+		.ddr3_odt                       (ddr3_odt),  			// output [0:0]        	ddr3_odt
+		
+		.init_calib_complete            (init_calib_complete),  // output            	init_calib_complete
+		
+		// Application interface ports
+		.app_addr                       (app_addr),  			// input [28:0]        	app_addr
+		.app_cmd                        (app_cmd),  			// input [2:0]        	app_cmd
+		.app_en                         (app_en),  				// input                app_en
+		.app_wdf_data                   (app_wdf_data),  		// input [127:0]        app_wdf_data
+		.app_wdf_end                    (app_wdf_end),  		// input                app_wdf_end
+		.app_wdf_wren                   (app_wdf_wren),  		// input                app_wdf_wren
+		.app_rd_data                    (app_rd_data),  		// output [127:0]    	app_rd_data
+		.app_rd_data_end                (app_rd_data_end),  	// output            	app_rd_data_end
+		.app_rd_data_valid              (app_rd_data_valid),  	// output            	app_rd_data_valid
+		.app_rdy                        (app_rdy),  			// output            	app_rdy
+		.app_wdf_rdy                    (app_wdf_rdy),  		// output            	app_wdf_rdy
+		.app_sr_req                     (1'b0),  				// input            	app_sr_req
+		.app_ref_req                    (1'b0),  				// input            	app_ref_req
+		.app_zq_req                     (1'b0),  				// input            	app_zq_req
+		.app_sr_active                  (),  					// output            	app_sr_active
+		.app_ref_ack                    (),  					// output            	app_ref_ack
+		.app_zq_ack                     (),  					// output            	app_zq_ack
+		.ui_clk                         (sys_clk),  			// output            	ui_clk
+		.ui_clk_sync_rst                (sys_rst_sync),  		// output            	ui_clk_sync_rst
+		.app_wdf_mask                   (app_wdf_mask),  		// input [15:0]        	app_wdf_mask
+		
+		// System Clock Ports
+		.sys_clk_p                      (sys_clk_p),  			// input                sys_clk_p
+		.sys_clk_n                      (sys_clk_n),  			// input                sys_clk_n
+		.sys_rst                        (sys_rst) 				// input 				sys_rst
+	);
+	
+	
+	//-------------------------------------------------------------------------------
+    //  FIFO for collecting transfer from DRAM
+    //-------------------------------------------------------------------------------
 	fifo_W128_R32 fifo_3 	(
-							.rst														(|fifo_clr),
+							.rst													(|fifo_clr),
+							
 							.wr_clk													(sys_clk),
-							.din														(pipeO_fifo_data_128b),
-							.wr_en													(fifo_valid[0][2]),
+							.wr_en													(rrc_write),
+							.din													(rrc_data),
+							.full													(fifo_full[0][3]),
+							.wr_data_count											(rrc_ob_wr_count), // [7:0]
+							
 							.rd_clk													(ti_clk),
 							.rd_en													(~fifo_full[0][4]),
 							.dout													(pipeO_fifo_data_32b_remitted),
-							.full														(fifo_full[0][3]),
 							.empty													(fifo_empty[0][3]),
-							.valid													(fifo_valid[0][3])
+							.valid													(fifo_valid[0][3]), 
+							.rd_data_count											() // [9:0]
 	);
 	
 	
+	//-------------------------------------------------------------------------------
 	// FIFO for prepping transfer to PC
+	//-------------------------------------------------------------------------------
 	fifo_W32_R16 fifo_4 		    (
-							.rst														(|fifo_clr),
-							.clk														(ti_clk),
-							.din														(pipeO_fifo_data_32b_remitted),	// 8'bit in data
+							.rst													(|fifo_clr),
+							.clk													(ti_clk),
+							
 							.wr_en													(fifo_valid[0][3]),
-							.rd_en													(pipeO_master_read),
-							.dout													(pipeO_fifo_data_16b),  // 16'bit out data
-							.full														(fifo_full[0][4]),
+							.din													(pipeO_fifo_data_32b_remitted),
+							.full													(fifo_full[0][4]),
 							.overflow												(fifo_overflow[0][4]),
+							
+							.rd_en													(pipeO_master_read),
+							.dout													(pipeO_fifo_data_16b),
 							.empty													(fifo_empty[0][4]),
 							.valid													(fifo_valid[0][4]),
-							.underflow											(fifo_underflow[0][4]),
-							.rd_data_count 									(fifo_rd_data_count[0])
+							.underflow												(fifo_underflow[0][4]),
+							.rd_data_count 											(fifo_rd_data_count[0])
 	);
 	
 	// Shuffle bits before bus transfer
 	assign pipeO_fifo_data_16b_shuffled[15:8] = pipeO_fifo_data_16b[7:0];
 	assign pipeO_fifo_data_16b_shuffled[7:0]  = pipeO_fifo_data_16b[15:8];
-    
-    
-//    //-------------------------------------------------------------------------------
-//    //  DDR3 MIG Module
-//    //-------------------------------------------------------------------------------
-//    ddr3_256_16 u_ddr3_256_16 (
-
-//		// Memory interface ports to DRAM
-//		.ddr3_addr                      (ddr3_addr),  			// output [14:0]        ddr3_addr
-//		.ddr3_ba                        (ddr3_ba),  			// output [2:0]        	ddr3_ba
-//		.ddr3_cas_n                     (ddr3_cas_n),  			// output            	ddr3_cas_n
-//		.ddr3_ck_n                      (ddr3_ck_n),  			// output [0:0]        	ddr3_ck_n
-//		.ddr3_ck_p                      (ddr3_ck_p),  			// output [0:0]        	ddr3_ck_p
-//		.ddr3_cke                       (ddr3_cke),  			// output [0:0]        	ddr3_cke
-//		.ddr3_ras_n                     (ddr3_ras_n),  			// output            	ddr3_ras_n
-//		.ddr3_reset_n                   (ddr3_reset_n),  		// output            	ddr3_reset_n
-//		.ddr3_we_n                      (ddr3_we_n),  			// output            	ddr3_we_n
-//		.ddr3_dq                        (ddr3_dq),  			// inout [15:0]        	ddr3_dq
-//		.ddr3_dqs_n                     (ddr3_dqs_n),  			// inout [1:0]        	ddr3_dqs_n
-//		.ddr3_dqs_p                     (ddr3_dqs_p),  			// inout [1:0]        	ddr3_dqs_p
-//		.ddr3_dm                        (ddr3_dm),  			// output [1:0]        	ddr3_dm
-//		.ddr3_odt                       (ddr3_odt),  			// output [0:0]        	ddr3_odt
-		
-//		.init_calib_complete            (init_calib_complete),  // output            	init_calib_complete
-		
-//		// Application interface ports
-//		.app_addr                       (app_addr),  			// input [28:0]        	app_addr
-//		.app_cmd                        (app_cmd),  			// input [2:0]        	app_cmd
-//		.app_en                         (app_en),  				// input                app_en
-//		.app_wdf_data                   (app_wdf_data),  		// input [127:0]        app_wdf_data
-//		.app_wdf_end                    (app_wdf_end),  		// input                app_wdf_end
-//		.app_wdf_wren                   (app_wdf_wren),  		// input                app_wdf_wren
-//		.app_rd_data                    (app_rd_data),  		// output [127:0]    	app_rd_data
-//		.app_rd_data_end                (app_rd_data_end),  	// output            	app_rd_data_end
-//		.app_rd_data_valid              (app_rd_data_valid),  	// output            	app_rd_data_valid
-//		.app_rdy                        (app_rdy),  			// output            	app_rdy
-//		.app_wdf_rdy                    (app_wdf_rdy),  		// output            	app_wdf_rdy
-//		.app_sr_req                     (1'b0),  				// input            	app_sr_req
-//		.app_ref_req                    (1'b0),  				// input            	app_ref_req
-//		.app_zq_req                     (1'b0),  				// input            	app_zq_req
-//		.app_sr_active                  (),  					// output            	app_sr_active
-//		.app_ref_ack                    (),  					// output            	app_ref_ack
-//		.app_zq_ack                     (),  					// output            	app_zq_ack
-//		.ui_clk                         (sys_clk),  			// output            	ui_clk
-//		.ui_clk_sync_rst                (),  					// output            	ui_clk_sync_rst
-//		.app_wdf_mask                   (app_wdf_mask),  		// input [15:0]        	app_wdf_mask
-		
-//		// System Clock Ports
-//		.sys_clk_p                      (sys_clk_p),  			// input                sys_clk_p
-//		.sys_clk_n                      (sys_clk_n),  			// input                sys_clk_n
-//		.sys_rst                        (dram_rst) 				// input 				sys_rst
-//	);
     
     
     //-------------------------------------------------------------------------------
