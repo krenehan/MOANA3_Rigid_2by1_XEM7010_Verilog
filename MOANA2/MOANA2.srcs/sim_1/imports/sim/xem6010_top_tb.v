@@ -102,14 +102,20 @@
 `define DigitalCore_AQCDLLFinestWord_idx(n)  (n * 1      +    312)+:     1 //    312:312   
 //-------------------------------------------------------------------------------------------
 
-`define SIMULATION_ONLY
+//`define SHORTEN_SIM
 `define TIME_OK_WAIT 50000
 
 module xem6010_top_tb;
 
 	// Options
-	localparam RANDOM_TEST_PATTERN = "False";
-	localparam OVERRIDE_DATAOUT = "True";
+	localparam RANDOM_TEST_PATTERN = "True";
+	
+	// Additional settings derived from options above
+	`ifdef SHORTEN_SIM
+		localparam OVERRIDE_DATAOUT = "True";
+	`else
+		localparam OVERRIDE_DATAOUT = "False";
+	`endif
 
 	// TEST SETTINGS
 	localparam NUMBER_OF_CHIPS = 2;
@@ -117,7 +123,7 @@ module xem6010_top_tb;
 	localparam NUMBER_OF_FRAMES = 16'd1;
 	localparam PATTERNS_PER_FRAME = 16'd1;
 	localparam PAD_CAPTURED_MASK = 16'b11;
-	localparam MEASUREMENTS_PER_PATTERN = 32'd25000;
+	localparam MEASUREMENTS_PER_PATTERN = 32'd15000;
 	localparam TEST_PATTERN_0 = 10'd5;
 	localparam TEST_PATTERN_1 = 10'd10;
     
@@ -658,7 +664,7 @@ module xem6010_top_tb;
 		
 		// Set scan bits
 		for (k=0;k<NUMBER_OF_CHIPS;k=k+1) begin
-			ScanBitsRd[k][`DigitalCore_MeasCountEnable] = 1'b0;
+			ScanBitsRd[k][`DigitalCore_MeasCountEnable] = 1'b1;
 			ScanBitsRd[k][`DigitalCore_TestPattEnable] = 1'b1;
 			ScanBitsRd[k][`DigitalCore_DriverDLLWord] = 4'b0010;
 			ScanBitsRd[k][`DigitalCore_VCSELEnableControlledByScan] = 1'b0;
@@ -691,18 +697,28 @@ module xem6010_top_tb;
 		
 			// Set the capture count
 			capture_count = k;
-		
-			// Run frame controller
-//			run_capture;
-			init_capture;
-			force_histogram;
-			#(`TIME_OK_WAIT);
-			force_histogram;
+
+			`ifdef SHORTEN_SIM
 			
-			// Set ram mode to read
-			$display("TIME %0t: INFO: setting ram mode to read", $time);
-			tielo_ram_mode_signal(SIGNAL_RAM_WRITE_MODE);
-			tiehi_ram_mode_signal(SIGNAL_RAM_READ_MODE);
+				// Force histogram streamout
+				init_capture;
+				force_histogram;
+				#(`TIME_OK_WAIT);
+				force_histogram;
+				
+				// Set ram mode to read
+				$display("TIME %0t: INFO: setting ram mode to read", $time);
+				tielo_ram_mode_signal(SIGNAL_RAM_WRITE_MODE);
+				tiehi_ram_mode_signal(SIGNAL_RAM_READ_MODE);
+			
+			`else
+			
+				// Run frame controller
+				run_capture;
+			
+			`endif
+			
+			// Wait before reading from FIFO
 			#(`TIME_OK_WAIT);
 		
 			// Read data
@@ -710,9 +726,6 @@ module xem6010_top_tb;
 			
 			// Print the pipeout
 			print_pipeOut_flat(k);
-			
-			// Check the data packet
-			//check_data_packet(k, pipeOut_flat, test_pattern_flat);
 			
 			// Add some margin at the end of the sim
 			#(1000);
