@@ -1,23 +1,22 @@
 `timescale 1ns / 1ps
 
 //=============================================================================
-//  Top-level verilog module for the XEM6010 Opal Kelly Board
+//  Top-level verilog module for the XEM7010 Opal Kelly Board
 //=============================================================================
-//`define SIMULATION_ONLY
+
+// Clock selecion
 `define INTERNAL_CLOCKS
-//=============================================================================
-//  No default nets!
-//=============================================================================
-//`default_nettype none
-//=============================================================================
+//`define EXTERNAL_CLOCKS
 
-//=============================================================================
-//  Include clock setup file
-//=============================================================================
-`include "../verilog/setup_clocks.v"
-//=============================================================================
+// Simulation flag
+`define SIMULATION
 
-module xem6010_top(
+module xem6010_top 	(
+	
+`ifdef SIMULATION
+	output reg sys_rst, 
+	output wire init_calib_complete,
+`endif
 
 	// OK interface
 	input		wire		[7:0]			hi_in,
@@ -50,11 +49,8 @@ module xem6010_top(
 	inout  		wire 	[1:0]  		ddr3_dqs_n,
 	output 		wire          			ddr3_ck_p,
 	output 		wire          			ddr3_ck_n,
-	output 		wire          			ddr3_reset_n, 
+	output 		wire          			ddr3_reset_n
 	
-	// Added for sims
-	output reg sys_rst, 
-	output wire init_calib_complete
 	
     );
 
@@ -346,9 +342,12 @@ module xem6010_top(
 	wire app_rdy;
 	wire app_wdf_rdy;
 	wire [15:0] app_wdf_mask;
-	//reg sys_rst;
 	wire sys_rst_sync;
-	//wire init_calib_complete;
+	
+`ifndef SIMULATION
+	reg sys_rst;
+	wire init_calib_complete;
+`endif
 	
 	wire rwc_read;
 	wire rrc_write;
@@ -373,53 +372,6 @@ module xem6010_top(
 	reg																		verify_scan_clk_p_running;
 	reg																		verify_scan_clk_n_running;
     
-
-	//------------------------------------------------------------------------
-	// System clock differential to single-ended buffer
-	//------------------------------------------------------------------------
-//    IBUFDS clock_buff (
-//        .O(sys_clk), //buffer output
-//        .I(sys_clk_p), //buffer input 
-//        .IB(sys_clk_n) //  
-//    );
-
-
-assign ref_clk_mmcm_muxed = clk_select[0] ? ref_clk_mmcm[0] : ref_clk_mmcm[1];
-
-BUFGCTRL #(
-        .INIT_OUT(0), // Initial value of BUFGCTRL output ($VALUES;)
-        .PRESELECT_I0("FALSE"), // BUFGCTRL output uses I0 input ($VALUES;)
-        .PRESELECT_I1("FALSE") // BUFGCTRL output uses I1 input ($VALUES;)
-) 
-
-BUFGCTRL_ref_clk_mmcm_muxed_inst (
-        .O                  (ref_clk_pll), // 1-bit output: Clock output
-        .CE0                (ref_clk_mmcm_enable), // 1-bit input: Clock enable input for I0
-        .CE1(ref_clk_mmcm_enable), // 1-bit input: Clock enable input for I1
-        .I0(ref_clk_mmcm_muxed), // 1-bit input: Primary clock
-        .I1(ref_clk_mmcm[2]), // 1-bit input: Secondary clock
-        .IGNORE0(1'b1), // 1-bit input: Clock ignore input for I0
-        .IGNORE1(1'b1), // 1-bit input: Clock ignore input for I1
-        .S0(~clk_select[1]), // 1-bit input: Clock select for I0
-        .S1(clk_select[1]) // 1-bit input: Clock select for I1
-);
-
-    
-    //------------------------------------------------------------------------
-    // clock PLL instantiation
-    //------------------------------------------------------------------------
-    clk_wiz_0 instance_name
-   (
-    // Clock out ports
-    .clk_25MHz(ref_clk_mmcm[0]),     // output clk_25MHz
-    .clk_50MHz(ref_clk_mmcm[1]),     // output clk_50MHz
-    .clk_100MHz(ref_clk_mmcm[2]),     // output clk_100MHz
-    .tx_refclk_mmcm(tx_refclk_mmcm),     // output tx_refclk_mmcm
-    // Status and control signals
-    .reset(mmcm_rst), // input reset
-    .locked(locked), 
-   // Clock in ports
-    .clk_in1(sys_clk));      // input clk_in1
     
     //------------------------------------------------------------------------
     // User Interface Connections for Scan Chain
@@ -485,11 +437,11 @@ BUFGCTRL_ref_clk_mmcm_muxed_inst (
 	//  LEDs
 	//------------------------------------------------------------------------
 	// Use LEDs as status display
-	assign led[0]			=			~verify_refclk_running;
-	assign led[1]			=			~verify_tx_refclk_running;
-	assign led[2]			=			~verify_scan_clk_p_running;
-	assign led[3]			=			~verify_scan_clk_n_running;
-	assign led[4]			=			~1'b0;
+	assign led[0]			=			~sys_rst_sync;
+	assign led[1]			=			~init_calib_complete;
+	assign led[2]			=			~ram_mode_write;
+	assign led[3]			=			~ram_mode_read;
+	assign led[4]			=			~app_en;
 	assign led[5]			=			~1'b0;
 	assign led[6]           =          ~1'b0;
 	assign led[7]           =          ~1'b0;
@@ -590,6 +542,52 @@ BUFGCTRL_ref_clk_mmcm_muxed_inst (
     // pad clocks are always driven by ODDR, although source could be PLL or external
     assign pad_refclk = refclk_out;
     assign pad_tx_refclk = tx_refclk_out;
+    
+    
+    //------------------------------------------------------------------------
+    // Clock MMCM instantiation
+    //------------------------------------------------------------------------
+    clk_wiz_0 clk_gen_mmcm
+   (
+		.reset				(mmcm_rst),				// Reset
+		.clk_in1			(sys_clk),				// 100MHz Input Clock
+		.locked				(locked),				// Indicates that PLL has locked
+		
+		.clk_25MHz			(ref_clk_mmcm[0]),		// 25MHz Output Clock for RefClk
+		.clk_50MHz			(ref_clk_mmcm[1]),		// 50MHz Output Clock for RefClk
+		.clk_100MHz			(ref_clk_mmcm[2]),		// 100MHz Output Clock for RefClk
+		
+		.tx_refclk_mmcm		(tx_refclk_mmcm) 		// 12.5MHz Output Clock for TxRefClk
+    );
+    
+    
+    //------------------------------------------------------------------------
+    // Clock Multiplexer
+    //------------------------------------------------------------------------
+	BUFGCTRL #(
+		.INIT_OUT			(0), 					// Initial value of BUFGCTRL output ($VALUES;)
+		.PRESELECT_I0		("FALSE"), 				// BUFGCTRL output uses I0 input ($VALUES;)
+		.PRESELECT_I1		("FALSE") 				// BUFGCTRL output uses I1 input ($VALUES;)
+	) 
+	
+	BUFGCTRL_ref_clk_mmcm_muxed_inst (
+		.O              	(ref_clk_pll), 			// 1-bit output: Clock output
+		.CE0            	(ref_clk_mmcm_enable), 	// 1-bit input: Clock enable input for I0
+		.CE1				(ref_clk_mmcm_enable), 	// 1-bit input: Clock enable input for I1
+		.I0					(ref_clk_mmcm_muxed), 	// 1-bit input: Primary clock
+		.I1					(ref_clk_mmcm[2]), 		// 1-bit input: Secondary clock
+		.IGNORE0			(1'b1), 				// 1-bit input: Clock ignore input for I0
+		.IGNORE1			(1'b1), 				// 1-bit input: Clock ignore input for I1
+		.S0					(~clk_select[1]), 		// 1-bit input: Clock select for I0
+		.S1					(clk_select[1]) 		// 1-bit input: Clock select for I1
+	);
+	
+	// First stage multiplexer for clock
+	// clk_select[1] high selects 100MHz
+	// When clk_select[1] is low:
+	// clk_select[0] high selects 25MHz, low selects 50MHz
+	assign ref_clk_mmcm_muxed = clk_select[0] ? ref_clk_mmcm[0] : ref_clk_mmcm[1];
+	
 	
     //------------------------------------------------------------------------
     // RefClk Output for Chip RefClk
@@ -610,7 +608,7 @@ BUFGCTRL_ref_clk_mmcm_muxed_inst (
 			.R(rst), 																// 1-bit reset input
 			.S(1'b0) 																// 1-bit set input
 	);
-    //------------------------------------------------------------------------
+
 	
     //------------------------------------------------------------------------
     // Tx_RefClk Output for Chip TxRefClk
@@ -631,7 +629,6 @@ BUFGCTRL_ref_clk_mmcm_muxed_inst (
 			.R(rst), 																// 1-bit reset input
 			.S(1'b0) 																// 1-bit set input
 	);
-    //------------------------------------------------------------------------
 
 
     //------------------------------------------------------------------------
@@ -640,7 +637,7 @@ BUFGCTRL_ref_clk_mmcm_muxed_inst (
     //------------------------------------------------------------------------
 	okHost okHI(
 	.hi_in(hi_in), .hi_out(hi_out), .hi_inout(hi_inout), .hi_aa(hi_aa), .ti_clk(ti_clk), .ok1(ok1), .ok2(ok2));
-    //------------------------------------------------------------------------
+
 
     //------------------------------------------------------------------------
     // Endpoint connections: HI to core and core to FPGA connections
@@ -942,21 +939,6 @@ BUFGCTRL_ref_clk_mmcm_muxed_inst (
 	
 	
     //-------------------------------------------------------------------------------
-    //  DDR3 MIG Module Reset
-    //-------------------------------------------------------------------------------
-	reg [31:0] rst_cnt;
-	initial rst_cnt = 32'b0;
-	always @(posedge ti_clk) begin
-		if(rst_cnt < 32'h100) begin
-			rst_cnt <= rst_cnt + 1;
-			sys_rst <= 1'b1;
-		end else begin
-			sys_rst <= 1'b0;
-		end
-	end
-	
-	
-    //-------------------------------------------------------------------------------
     //  DDR3 MIG Module
     //-------------------------------------------------------------------------------
     ddr3_256_16 u_ddr3_256_16 (
@@ -980,26 +962,26 @@ BUFGCTRL_ref_clk_mmcm_muxed_inst (
 		.init_calib_complete            (init_calib_complete),  // output            	init_calib_complete
 		
 		// Application interface ports
-		.app_addr                       (app_addr),  			// input [28:0]        	app_addr
-		.app_cmd                        (app_cmd),  			// input [2:0]        	app_cmd
-		.app_en                         (app_en),  				// input                app_en
-		.app_wdf_data                   (app_wdf_data),  		// input [127:0]        app_wdf_data
-		.app_wdf_end                    (app_wdf_end),  		// input                app_wdf_end
-		.app_wdf_wren                   (app_wdf_wren),  		// input                app_wdf_wren
-		.app_rd_data                    (app_rd_data),  		// output [127:0]    	app_rd_data
-		.app_rd_data_end                (app_rd_data_end),  	// output            	app_rd_data_end
-		.app_rd_data_valid              (app_rd_data_valid),  	// output            	app_rd_data_valid
-		.app_rdy                        (app_rdy),  			// output            	app_rdy
-		.app_wdf_rdy                    (app_wdf_rdy),  		// output            	app_wdf_rdy
-		.app_sr_req                     (1'b0),  				// input            	app_sr_req
-		.app_ref_req                    (1'b0),  				// input            	app_ref_req
+		.app_addr                       (app_addr),  			// input [28:0]        	app_addr 			(address for current request)
+		.app_cmd                        (app_cmd),  			// input [2:0]        	app_cmd 			(command for current request)
+		.app_en                         (app_en),  				// input                app_en  			(active high enable for addr, cmd)
+		.app_wdf_data                   (app_wdf_data),  		// input [127:0]        app_wdf_data		(data for write commands)
+		.app_wdf_end                    (app_wdf_end),  		// input                app_wdf_end			(last cycle of input data)
+		.app_wdf_wren                   (app_wdf_wren),  		// input                app_wdf_wren		(write enable)
+		.app_rd_data                    (app_rd_data),  		// output [127:0]    	app_rd_data			(data from read commands)
+		.app_rd_data_end                (app_rd_data_end),  	// output            	app_rd_data_end		(last cycle of output data)
+		.app_rd_data_valid              (app_rd_data_valid),  	// output            	app_rd_data_valid	(read data is valid)
+		.app_rdy                        (app_rdy),  			// output            	app_rdy				(ready to accept commands)
+		.app_wdf_rdy                    (app_wdf_rdy),  		// output            	app_wdf_rdy			(write FIFO ready to receive data)
+		.app_sr_req                     (1'b0),  				// input            	app_sr_req			(always tied to 1'b0)
+		.app_ref_req                    (1'b0),  				// input            	app_ref_req			(request refresh)
 		.app_zq_req                     (1'b0),  				// input            	app_zq_req
 		.app_sr_active                  (),  					// output            	app_sr_active
 		.app_ref_ack                    (),  					// output            	app_ref_ack
 		.app_zq_ack                     (),  					// output            	app_zq_ack
-		.ui_clk                         (sys_clk),  			// output            	ui_clk
-		.ui_clk_sync_rst                (sys_rst_sync),  		// output            	ui_clk_sync_rst
-		.app_wdf_mask                   (app_wdf_mask),  		// input [15:0]        	app_wdf_mask
+		.ui_clk                         (sys_clk),  			// output            	ui_clk 				(100MHz clock)
+		.ui_clk_sync_rst                (sys_rst_sync),  		// output            	ui_clk_sync_rst 	(synchronous version of sys_rst)
+		.app_wdf_mask                   (app_wdf_mask),  		// input [15:0]        	app_wdf_mask		(mask for write data)
 		
 		// System Clock Ports
 		.sys_clk_p                      (sys_clk_p),  			// input                sys_clk_p
