@@ -914,7 +914,7 @@ module xem6010_top 	(
 	//-------------------------------------------------------------------------------
     //  DRAM Read and Write Controller
     //-------------------------------------------------------------------------------
-	ddr3_test ddr3_tb  		(
+	mem_arbiter ddr3_arb(
 							.clk                (sys_clk),
 							.reset              (rst),
 							.reads_en           (ram_mode_read),
