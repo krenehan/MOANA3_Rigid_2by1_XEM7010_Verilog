@@ -5,7 +5,7 @@
 //`define EXTERNAL_CLOCKS
 
 // Simulation flag
-`define SIMULATION
+//`define SIMULATION
 
 //=============================================================================
 //  Top-level verilog module for the XEM7010 Opal Kelly Board
@@ -917,8 +917,6 @@ module xem6010_top 	(
 	mem_arbiter ddr3_arb(
 							.clk                (sys_clk),
 							.reset              (rst),
-							.reads_en           (ram_mode_read),
-							.writes_en          (ram_mode_write),
 							.calib_done         (init_calib_complete),
 							
 							.ib_re              (rwc_read),
