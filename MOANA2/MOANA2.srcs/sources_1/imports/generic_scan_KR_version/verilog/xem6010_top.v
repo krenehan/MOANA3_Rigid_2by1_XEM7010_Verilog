@@ -1,9 +1,5 @@
 `timescale 1ns / 1ps
 
-//=============================================================================
-//  Top-level verilog module for the XEM7010 Opal Kelly Board
-//=============================================================================
-
 // Clock selecion
 `define INTERNAL_CLOCKS
 //`define EXTERNAL_CLOCKS
@@ -11,8 +7,11 @@
 // Simulation flag
 `define SIMULATION
 
+//=============================================================================
+//  Top-level verilog module for the XEM7010 Opal Kelly Board
+//=============================================================================
 module xem6010_top 	(
-	
+
 `ifdef SIMULATION
 	output reg sys_rst, 
 	output wire init_calib_complete,
@@ -255,10 +254,10 @@ module xem6010_top 	(
 	wire		[NUMBER_OF_CHIPS-1:0]											tx_dataout;
 	
 	// FIFO to Computer Wires
-	wire		[4:0]															fifo_full														[NUMBER_OF_CHIPS-1:0];
-	wire		[4:0]															fifo_overflow												[NUMBER_OF_CHIPS-1:0];
-	wire		[4:0]															fifo_empty													[NUMBER_OF_CHIPS-1:0];
-	wire		[4:0]															fifo_underflow											[NUMBER_OF_CHIPS-1:0];
+	wire		[3:0]															fifo_full														[NUMBER_OF_CHIPS-1:0];
+	wire		[3:0]															fifo_overflow												[NUMBER_OF_CHIPS-1:0];
+	wire		[3:0]															fifo_empty													[NUMBER_OF_CHIPS-1:0];
+	wire		[3:0]															fifo_underflow											[NUMBER_OF_CHIPS-1:0];
 	
 	// FIFO to Computer Pipe
 	wire		[OKWIDTH-1:0]											pipeO_fifo_data_16b;		// ok2core Buffer to Opal Kelly HI Data Interface
@@ -266,13 +265,12 @@ module xem6010_top 	(
 	wire		[NUMBER_OF_CHIPS-1:0]							master_pipe_controller_read;
 	
 	// FIFO to FIFO Wires				
-	wire		[4:0]															fifo_valid													[NUMBER_OF_CHIPS-1:0];
+	wire		[3:0]															fifo_valid													[NUMBER_OF_CHIPS-1:0];
 	wire		[7:0]															pipeO_fifo_data_8b									[NUMBER_OF_CHIPS-1:0];
 	wire		[31:0]														pipeO_fifo_data_32b									[NUMBER_OF_CHIPS-1:0];
 	wire		[31:0]														pipeO_fifo_data_32b_reversed					[NUMBER_OF_CHIPS-1:0];
-	wire		[31:0]														pipeO_fifo_data_32b_remitted;
 	wire 	[127:0]														pipeO_fifo_data_128b;
-	wire		[15:0]														fifo_rd_data_count									[NUMBER_OF_CHIPS-1:0];
+	wire		[10:0]														fifo_rd_data_count;
 	wire		[NUMBER_OF_CHIPS-1:0]										pad_captured;
 	wire																		data_loaded												[NUMBER_OF_CHIPS-1:0];
 	wire																		read_issued												[NUMBER_OF_CHIPS-1:0];
@@ -544,6 +542,21 @@ module xem6010_top 	(
     assign pad_tx_refclk = tx_refclk_out;
     
     
+	//-------------------------------------------------------------------------------
+    //  DDR3 MIG Module Reset
+    //-------------------------------------------------------------------------------
+	reg [31:0] rst_cnt;
+	initial rst_cnt = 32'b0;
+	always @(posedge ti_clk) begin
+		if(rst_cnt < 32'h100) begin
+			rst_cnt <= rst_cnt + 1;
+			sys_rst <= 1'b1;
+		end else begin
+			sys_rst <= 1'b0;
+		end
+	end
+    
+    
     //------------------------------------------------------------------------
     // Clock MMCM instantiation
     //------------------------------------------------------------------------
@@ -644,8 +657,8 @@ module xem6010_top 	(
     //------------------------------------------------------------------------
      
      // WireOR for switching bus inputs into okHost
-	wire [15*17-1:0]  ok2x;
-	okWireOR # (.N(15)) wireOR (ok2, ok2x);
+	wire [14*17-1:0]  ok2x;
+	okWireOR # (.N(14)) wireOR (ok2, ok2x);
     
     // Wire In: Valid Address Range:  0x00-0x1F
     okWireIn ep00(.ok1(ok1), .ep_addr(ADDR_WIREIN_MSGCTRL), .ep_dataout(msg_ctrl));
@@ -664,28 +677,27 @@ module xem6010_top 	(
     // Wire Out: Valid Address Range:  0x20-0x3F
     okWireOut ep20 (.ok1(ok1), .ok2(ok2x[ 0*17 +: 17 ]), .ep_addr(ADDR_WIREOUT_STATUS), .ep_datain(msg_stat));
     okWireOut ep21 (.ok1(ok1), .ok2(ok2x[ 1*17 +: 17 ]), .ep_addr(ADDR_WIREOUT_SIGNAL), .ep_datain(sw_out_signals));
-	okWireOut ep23 (.ok1(ok1), .ok2(ok2x[ 2*17 +: 17 ]), .ep_addr(ADDR_WIREOUT_FIFOC0F2), .ep_datain(fifo_rd_data_count[0]));
-	okWireOut ep25 (.ok1(ok1), .ok2(ok2x[ 3*17 +: 17 ]), .ep_addr(ADDR_WIREOUT_FIFOC1F2), .ep_datain(fifo_rd_data_count[1]));
-	okWireOut ep26 (.ok1(ok1), .ok2(ok2x[ 4*17 +: 17 ]), .ep_addr(ADDR_WIREOUT_FIFOSTATUS), .ep_datain(fifo_stat));
-    okWireOut ep27 (.ok1(ok1), .ok2(ok2x[ 5*17 +: 17 ]), .ep_addr(ADDR_WIREOUT_EMITTERPATTERNLSB), .ep_datain(emitter_pattern_register_bank[15:0]));
-    okWireOut ep28 (.ok1(ok1), .ok2(ok2x[ 6*17 +: 17 ]), .ep_addr(ADDR_WIREOUT_EMITTERPATTERNMSB), .ep_datain(emitter_pattern_register_bank[31:16]));
-	okWireOut ep29 (.ok1(ok1), .ok2(ok2x[ 7*17 +: 17 ]), .ep_addr(ADDR_WIREOUT_FIFOSIZE), .ep_datain(16'd32767));
-	okWireOut ep30 (.ok1(ok1), .ok2(ok2x[ 8*17 +: 17 ]), .ep_addr(ADDR_WIREOUT_FCSTATE), .ep_datain( {6'b0, fc_state} ));
-	okWireOut ep31 (.ok1(ok1), .ok2(ok2x[ 9*17 +: 17 ]), .ep_addr(ADDR_WIREOUT_RAM_STATUS), .ep_datain( sw_out_ram_status));
+	okWireOut ep23 (.ok1(ok1), .ok2(ok2x[ 2*17 +: 17 ]), .ep_addr(ADDR_WIREOUT_FIFOC0F2), .ep_datain({ 5'b0, fifo_rd_data_count }));
+	okWireOut ep26 (.ok1(ok1), .ok2(ok2x[ 3*17 +: 17 ]), .ep_addr(ADDR_WIREOUT_FIFOSTATUS), .ep_datain(fifo_stat));
+    okWireOut ep27 (.ok1(ok1), .ok2(ok2x[ 4*17 +: 17 ]), .ep_addr(ADDR_WIREOUT_EMITTERPATTERNLSB), .ep_datain(emitter_pattern_register_bank[15:0]));
+    okWireOut ep28 (.ok1(ok1), .ok2(ok2x[ 5*17 +: 17 ]), .ep_addr(ADDR_WIREOUT_EMITTERPATTERNMSB), .ep_datain(emitter_pattern_register_bank[31:16]));
+	okWireOut ep29 (.ok1(ok1), .ok2(ok2x[ 6*17 +: 17 ]), .ep_addr(ADDR_WIREOUT_FIFOSIZE), .ep_datain(16'd32767));
+	okWireOut ep30 (.ok1(ok1), .ok2(ok2x[ 7*17 +: 17 ]), .ep_addr(ADDR_WIREOUT_FCSTATE), .ep_datain( {6'b0, fc_state} ));
+	okWireOut ep31 (.ok1(ok1), .ok2(ok2x[ 8*17 +: 17 ]), .ep_addr(ADDR_WIREOUT_RAM_STATUS), .ep_datain( sw_out_ram_status));
     
     // Trigger In: Valid Address Range (0x40 - 0x5F)
     okTriggerIn ep40 (.ok1(ok1), .ep_addr(ADDR_TRIGGERIN_DATASTREAMREADACK), .ep_clk(refclk_int), .ep_trigger(sw_trigger_in));
     
     // Trigger Out: Valid Address Range (0x60-0x7F)
-    okTriggerOut ep60 (.ok1(ok1), .ok2(ok2x[ 10*17 +: 17 ]), .ep_addr(ADDR_TRIGGEROUT_DATASTREAMREAD), .ep_clk(refclk_int), .ep_trigger(sw_trigger_out));
+    okTriggerOut ep60 (.ok1(ok1), .ok2(ok2x[ 9*17 +: 17 ]), .ep_addr(ADDR_TRIGGEROUT_DATASTREAMREAD), .ep_clk(refclk_int), .ep_trigger(sw_trigger_out));
 
     // Pipe In: Valid Address Range:  0x80-0x9F
-    okPipeIn ep80 (.ok1(ok1), .ok2(ok2x[ 11*17 +: 17 ]), .ep_addr(ADDR_PIPEIN_SCAN), .ep_write(pipeI_write), .ep_dataout(pipeI_data));
-    okPipeIn ep81 (.ok1(ok1), .ok2(ok2x[ 12*17 +: 17 ]), .ep_addr(ADDR_PIPEIN_PATTERN), .ep_write(pipeI_emitter_pattern_write), .ep_dataout(pipeI_emitter_pattern_data));
+    okPipeIn ep80 (.ok1(ok1), .ok2(ok2x[ 10*17 +: 17 ]), .ep_addr(ADDR_PIPEIN_SCAN), .ep_write(pipeI_write), .ep_dataout(pipeI_data));
+    okPipeIn ep81 (.ok1(ok1), .ok2(ok2x[ 11*17 +: 17 ]), .ep_addr(ADDR_PIPEIN_PATTERN), .ep_write(pipeI_emitter_pattern_write), .ep_dataout(pipeI_emitter_pattern_data));
 
     // Pipe Out: Valid Address Range:  0xA0-0xBF
-    okPipeOut epA0 (.ok1(ok1), .ok2(ok2x[ 13*17 +: 17 ]), .ep_addr(ADDR_PIPEOUT_SCAN),.ep_read(pipeO_read), .ep_datain(pipeO_data));
-	okPipeOut epB0 (.ok1(ok1), .ok2(ok2x[ 14*17 +: 17 ]), .ep_addr(ADDR_PIPEOUT_FIFO_MASTER), .ep_read(pipeO_master_read), .ep_datain(pipeO_fifo_data_16b_shuffled));
+    okPipeOut epA0 (.ok1(ok1), .ok2(ok2x[ 12*17 +: 17 ]), .ep_addr(ADDR_PIPEOUT_SCAN),.ep_read(pipeO_read), .ep_datain(pipeO_data));
+	okPipeOut epB0 (.ok1(ok1), .ok2(ok2x[ 13*17 +: 17 ]), .ep_addr(ADDR_PIPEOUT_FIFO_MASTER), .ep_read(pipeO_master_read), .ep_datain(pipeO_fifo_data_16b_shuffled));
     
 
     //-------------------------------------------------------------------------------
@@ -993,7 +1005,7 @@ module xem6010_top 	(
 	//-------------------------------------------------------------------------------
     //  FIFO for collecting transfer from DRAM
     //-------------------------------------------------------------------------------
-	fifo_W128_R32 fifo_3 	(
+	fifo_W128_R16 fifo_3 	(
 							.rst													(|fifo_clr),
 							
 							.wr_clk													(sys_clk),
@@ -1003,32 +1015,11 @@ module xem6010_top 	(
 							.wr_data_count											(rrc_ob_wr_count), // [7:0]
 							
 							.rd_clk													(ti_clk),
-							.rd_en													(~fifo_full[0][4]),
-							.dout													(pipeO_fifo_data_32b_remitted),
-							.empty													(fifo_empty[0][3]),
-							.valid													(fifo_valid[0][3]), 
-							.rd_data_count											() // [9:0]
-	);
-	
-	
-	//-------------------------------------------------------------------------------
-	// FIFO for prepping transfer to PC
-	//-------------------------------------------------------------------------------
-	fifo_W32_R16 fifo_4 		    (
-							.rst													(|fifo_clr),
-							.clk													(ti_clk),
-							
-							.wr_en													(fifo_valid[0][3]),
-							.din													(pipeO_fifo_data_32b_remitted),
-							.full													(fifo_full[0][4]),
-							.overflow												(fifo_overflow[0][4]),
-							
 							.rd_en													(pipeO_master_read),
 							.dout													(pipeO_fifo_data_16b),
-							.empty													(fifo_empty[0][4]),
-							.valid													(fifo_valid[0][4]),
-							.underflow												(fifo_underflow[0][4]),
-							.rd_data_count 											(fifo_rd_data_count[0])
+							.empty													(fifo_empty[0][3]),
+							.valid													(fifo_valid[0][3]), 
+							.rd_data_count											(fifo_rd_data_count) // [10:0]
 	);
 	
 	// Shuffle bits before bus transfer
