@@ -27,12 +27,15 @@ module up_down_counter
 		input  wire dec,
 		output wire full,
 		output wire empty,
+		output wire empty_next_cycle,
 		output reg [WIDTH-1:0] count
     );
 	 
 	// Full and empty flags 
 	assign full = &count;
 	assign empty = !(|count);
+	assign empty_next_cycle = (count == 1) & dec;
+	
 	
 	// Up down counter with no overflow
 	always @(posedge clk or posedge rst) begin
