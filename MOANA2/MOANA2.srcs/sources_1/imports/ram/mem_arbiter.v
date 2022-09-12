@@ -7,8 +7,6 @@ module mem_arbiter
 		input  wire          clk,
 		input  wire          reset,
 		input  wire          calib_done,
-		input  wire			 writes_en,
-		input  wire			 reads_en,
 		
 		// Input buffer signals
 		output reg           ib_re,
@@ -77,7 +75,7 @@ module mem_arbiter
 	// Counter values
 	wire [7:0] write_cnt;
 	wire [7:0] read_cnt;
-	wire [7:0] packet_cnt;
+	wire [15:0] packet_cnt;
 	
 	// Read and write requests
 	wire		rd_req;
@@ -89,6 +87,7 @@ module mem_arbiter
 	wire		inc_packet_cnt;
 	wire		dec_packet_cnt;
 	wire		packet_cnt_empty;
+	wire		packet_cnt_empty_next_cycle;
 	
 	// Status signals
 	reg fifo_data_not_valid;
@@ -108,12 +107,10 @@ module mem_arbiter
 	//------------------------------------------------------------------------
 	
 	// If the input buffer has data, assert write request
-	assign wr_req = writes_en;
-	//assign wr_req = ~ib_empty;
+	assign wr_req = ~ib_empty;
 	
 	// If there is data in RAM and the output buffer does not contain a full packet of data, assert read request
-	assign rd_req = reads_en;
-	//assign rd_req = (~packet_cnt_empty) && (ob_count < WRITES_IN_PACKET);
+	assign rd_req = ~(packet_cnt_empty | packet_cnt_empty_next_cycle) && (ob_count < WRITES_IN_PACKET);
 	
 	
 	//------------------------------------------------------------------------
@@ -215,6 +212,7 @@ module mem_arbiter
 					if ( app_wdf_rdy == 1'b1 ) begin
 						app_en    <= 1'b1;
 						app_cmd <= CMD_WRITE;
+						inc_write_cnt <= 1'b1; // Write must occur, safe to increment here
 						state <= S_WRITE_3;
 					end
 				end
@@ -225,9 +223,6 @@ module mem_arbiter
 					
 						// Increment write address
 						cmd_byte_addr_wr <= cmd_byte_addr_wr + ADDRESS_INCREMENT;
-						
-						// Increment write counter
-						inc_write_cnt <= 1'b1;
 						
 						// Write finished, move back to idle state
 						state <= S_IDLE;
@@ -255,6 +250,7 @@ module mem_arbiter
 					if (app_rdy == 1'b1) begin
 						cmd_byte_addr_rd <= cmd_byte_addr_rd + ADDRESS_INCREMENT;
 						state <= S_READ_2;
+						inc_read_cnt <= 1'b1; // Read must complete, safe to increment read counter here
 					end else begin
 						app_en    <= 1'b1;
 						app_cmd <= CMD_READ;
@@ -267,7 +263,6 @@ module mem_arbiter
 					if (app_rd_data_valid == 1'b1) begin
 						ob_data <= app_rd_data;
 						ob_we <= 1'b1;
-						inc_read_cnt <= 1'b1;
 						state <= S_IDLE;
 					end else begin
 						rd_data_not_valid <= 1'b1;
@@ -311,13 +306,14 @@ module mem_arbiter
 	// Packet Counter
 	//------------------------------------------------------------------------
 	up_down_counter
-		#		(	.WIDTH		(8))
+		#		(	.WIDTH		(16))
 	u_packet_cnt(
 					.clk		(clk),
 					.rst		(reset),
 					.inc		(inc_packet_cnt),
 					.dec		(dec_packet_cnt),
 					.empty		(packet_cnt_empty),
+					.empty_next_cycle		(packet_cnt_empty_next_cycle),
 					.count		(packet_cnt)
 	);
 				
