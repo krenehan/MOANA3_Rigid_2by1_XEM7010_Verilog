@@ -74,6 +74,10 @@ task send_frame_data;
 		SetWireInValue(ADDR_WIREIN_MEASUREMENT_MSB, measurements_per_pattern_msb, NO_MASK);
 		$display("TIME %0t: INFO: measurements per pattern is %d", $time, MEASUREMENTS_PER_PATTERN);
 		
+		// Set packets in transfer
+		SetWireInValue(ADDR_WIREIN_PACKETS_IN_TRANSFER, PACKETS_IN_TRANSFER, NO_MASK);
+		$display("TIME %0t: INFO: packets in transfer is %d", $time, PACKETS_IN_TRANSFER);
+		
 		// Set pad captured mask
 		SetWireInValue(ADDR_WIREIN_PAD_CAPTURED_MASK, PAD_CAPTURED_MASK, NO_MASK);
 		$display("TIME %0t: INFO: pad captured mask is %b", $time, PAD_CAPTURED_MASK);
@@ -114,24 +118,6 @@ task tielo_fc_signal;
 	begin
 		frame_controller_wire_in_register = frame_controller_wire_in_register & (~signal);
 		SetWireInValue(ADDR_WIREIN_FRAMECTRL, frame_controller_wire_in_register, NO_MASK);
-		UpdateWireIns;
-	end
-endtask
-
-task tiehi_ram_mode_signal;
-	input [15:0] signal;
-	begin
-		ram_mode_wire_in_register = ram_mode_wire_in_register | signal;
-		SetWireInValue(ADDR_WIREIN_RAM_MODE, ram_mode_wire_in_register, NO_MASK);
-		UpdateWireIns;
-	end
-endtask
-
-task tielo_ram_mode_signal;
-	input [15:0] signal;
-	begin
-		ram_mode_wire_in_register = ram_mode_wire_in_register & (~signal);
-		SetWireInValue(ADDR_WIREIN_RAM_MODE, ram_mode_wire_in_register, NO_MASK);
 		UpdateWireIns;
 	end
 endtask
@@ -207,11 +193,6 @@ task init_capture;
 		$display("TIME %0t: INFO: unsetting frame data sent", $time);
 		tielo_fc_signal(SIGNAL_FRAME_DATA_SENT);
 		
-		// Setting ram mode to write
-		$display("TIME %0t: INFO: setting ram mode to write", $time);
-		tielo_ram_mode_signal(SIGNAL_RAM_READ_MODE);
-		tiehi_ram_mode_signal(SIGNAL_RAM_WRITE_MODE);
-		
 		// Unset capture start
 		$display("TIME %0t: INFO: setting capture start", $time);
 		tiehi_fc_signal(SIGNAL_CAPTURE_START);
@@ -249,12 +230,7 @@ task run_capture;
 		
 		// Unset scan done
 		$display("TIME %0t: INFO: unsetting scan done", $time);
-		tielo_fc_signal(SIGNAL_SCAN_DONE);
-		
-		// Set ram mode to read
-		$display("TIME %0t: INFO: setting ram mode to read", $time);
-		tielo_ram_mode_signal(SIGNAL_RAM_WRITE_MODE);
-		tiehi_ram_mode_signal(SIGNAL_RAM_READ_MODE);			
+		tielo_fc_signal(SIGNAL_SCAN_DONE);		
 		
 		// Capture complete
 		$display("TIME %0t: INFO: capture complete", $time);
