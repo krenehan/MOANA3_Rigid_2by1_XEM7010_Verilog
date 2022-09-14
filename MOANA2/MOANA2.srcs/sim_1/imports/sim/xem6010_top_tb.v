@@ -102,7 +102,7 @@
 `define DigitalCore_AQCDLLFinestWord_idx(n)  (n * 1      +    312)+:     1 //    312:312   
 //-------------------------------------------------------------------------------------------
 
-//`define SHORTEN_SIM
+`define SHORTEN_SIM
 `define TIME_OK_WAIT 50000
 
 module xem6010_top_tb;
@@ -122,6 +122,7 @@ module xem6010_top_tb;
 	localparam NUMBER_OF_CAPTURES = 1;
 	localparam NUMBER_OF_FRAMES = 16'd1;
 	localparam PATTERNS_PER_FRAME = 16'd1;
+	localparam PACKETS_IN_TRANSFER = 16'd1; // Should equal frames * patterns
 	localparam PAD_CAPTURED_MASK = 16'b11;
 	localparam MEASUREMENTS_PER_PATTERN = 32'd15000;
 	localparam TEST_PATTERN_0 = 10'd5;
@@ -139,7 +140,7 @@ module xem6010_top_tb;
     localparam  	ADDR_WIREIN_TRANSFERSIZE 						=       	8'h08;																			// Wire in for specifying expected packet size of emitter pattern 
     localparam  	ADDR_WIREIN_STREAM 									=			8'h09;																			// Wire in for specifying number of transfers to read data
     localparam 	ADDR_WIREIN_PAD_CAPTURED_MASK				=			8'h10;																			// Wire in for masking pad_captured signal based on functional ICs
-	localparam 		ADDR_WIREIN_RAM_MODE						= 8'h11;
+	localparam 		ADDR_WIREIN_PACKETS_IN_TRANSFER						= 8'h11;
     localparam  	ADDR_WIREOUT_STATUS 								=			8'h20;																			// Wire out for FPGA status
     localparam  	ADDR_WIREOUT_SIGNAL 								=			8'h21;																			// Wire out for direct python signal monitoring
 	localparam  	ADDR_WIREOUT_FIFOC0F2 							=	        8'h22;																			// Data count for Chip 0, FIFO 1
@@ -148,8 +149,7 @@ module xem6010_top_tb;
     localparam  	ADDR_WIREOUT_EMITTERPATTERNLSB 			= 			8'h25;																			// Emitter pattern register bank LSB
     localparam  	ADDR_WIREOUT_EMITTERPATTERNMSB 			= 			8'h26;																			// Emitter pattern register bank MSB
 	localparam 	ADDR_WIREOUT_FIFOSIZE 								= 			8'h27;																			// Max number of words in backend FIFO
-	localparam	ADDR_WIREOUT_FCSTATE								=			8'h28;																			// Wire out for frame controller state
-    localparam ADDR_WIREOUT_RAM_STATUS = 8'h29;
+	localparam	ADDR_WIREOUT_FCSTATE								=			8'h28;
     localparam  	ADDR_TRIGGERIN_DATASTREAMREADACK 		=      	8'h40;																			// Trigger in for enabling data stream
     localparam  	ADDR_TRIGGEROUT_DATASTREAMREAD 		=			8'h60;																			// Trigger out for data readout during streaming mode
     localparam  	ADDR_PIPEIN_SCAN 										=			8'h80;																			// Pipe in for scan
@@ -191,12 +191,7 @@ module xem6010_top_tb;
     localparam SIGNAL_CAPTURE_RUNNING =        16'h0080;
     localparam SIGNAL_CAPTURE_DONE =           16'h0100;
     
-    // Software Out RAM Status
-    localparam SIGNAL_RAM_RESET_ACTIVE = 		16'h1;
     
-    // Software In RAM mode signals
-    localparam SIGNAL_RAM_READ_MODE = 16'h0001;
-    localparam SIGNAL_RAM_WRITE_MODE = 16'h0002;
     
     localparam NUMBER_OF_BINS = 150;
     localparam BYTES_PER_BIN = 4;
@@ -257,7 +252,6 @@ module xem6010_top_tb;
 
 	wire [15:0] NO_MASK = 16'hffff;
 	reg [15:0] frame_controller_wire_in_register;
-	reg [15:0] ram_mode_wire_in_register;
 	reg [15:0] ram_status_wire_out_register;
 	reg [15:0] power_wire_in_register;
 	reg [15:0] frame_controller_wire_out_register;
@@ -265,6 +259,7 @@ module xem6010_top_tb;
 	reg [15:0] capture_count;
 	wire [15:0] frame_count;
 	wire [15:0] pattern_count;
+	wire [15:0] packets_in_transfer;
 	wire [15:0] measurements_per_pattern_msb = (MEASUREMENTS_PER_PATTERN & 32'hFF0000) >> 16;
 	wire [15:0] measurements_per_pattern_lsb = (MEASUREMENTS_PER_PATTERN & 32'hFFFF);
 	
@@ -625,7 +620,6 @@ module xem6010_top_tb;
 		frame_controller_wire_in_register = 0;
 		power_wire_in_register = 0;
 		ram_status_wire_out_register = 0;
-		ram_mode_wire_in_register = 0;
 		frame_controller_wire_out_register = 0;
 		force_dataout = 0;
 		
@@ -635,14 +629,6 @@ module xem6010_top_tb;
 		end
 		
 		repeat (10) @(posedge sys_clk_p);
-		
-		// Wait a long time for DRAM reset to complete
-		$display("TIME %0t: INFO: waiting for DRAM reset to complete", $time);
-		while (!(ram_status_wire_out_register[0] === 1'b0)) begin
-			UpdateWireOuts;
-			ram_status_wire_out_register = GetWireOutValue(ADDR_WIREOUT_RAM_STATUS);
-		end
-		$display("TIME %0t: INFO: done waiting for DRAM reset to complete", $time);
 
 		// Reset FPGA endpoint
 		FrontPanelReset;
@@ -705,11 +691,6 @@ module xem6010_top_tb;
 				force_histogram;
 				#(`TIME_OK_WAIT);
 				force_histogram;
-				
-				// Set ram mode to read
-				$display("TIME %0t: INFO: setting ram mode to read", $time);
-				tielo_ram_mode_signal(SIGNAL_RAM_WRITE_MODE);
-				tiehi_ram_mode_signal(SIGNAL_RAM_READ_MODE);
 			
 			`else
 			
