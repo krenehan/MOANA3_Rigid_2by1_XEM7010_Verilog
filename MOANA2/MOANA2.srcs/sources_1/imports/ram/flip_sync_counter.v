@@ -6,14 +6,16 @@
 module flip_sync_counter
 	#(
 		parameter WIDTH = 10,
-		parameter FLIP_AT_VAL = 10'd1023)
+		parameter FIXED_FLIP_VAL = "True",
+		parameter FLIP_AT_VAL = 2)
 	(
         input wire reset,
 		input wire clk,
 		input wire enable,
         output reg [WIDTH-1:0] count, 
         output wire alert, 
-        output reg flipped
+        output reg flipped, 
+        input wire [WIDTH-1:0] flip_val
     );
 
     //-----------------------------------------------------------------------------------
@@ -23,11 +25,22 @@ module flip_sync_counter
     //-----------------------------------------------------------------------------------
     //  Interal wires and registers
     //-----------------------------------------------------------------------------------
+    reg alert_fixed;
+    reg alert_configurable;
     
     //-----------------------------------------------------------------------------------
     //  Assigns
     //-----------------------------------------------------------------------------------
-    assign alert = count == FLIP_AT_VAL - 1;
+    always @(*) begin
+    	if (FIXED_FLIP_VAL == "True") begin
+    		alert_fixed = count == FLIP_AT_VAL - 1;
+    		alert_configurable = 1'b0;
+    	end else begin
+    		alert_fixed = 1'b0;
+    		alert_configurable = count == flip_val - 1;
+    	end
+    end
+    assign alert = (FIXED_FLIP_VAL == "True") ? alert_fixed : alert_configurable;
     
     //-----------------------------------------------------------------------------------
     //  Synchronous Counter
