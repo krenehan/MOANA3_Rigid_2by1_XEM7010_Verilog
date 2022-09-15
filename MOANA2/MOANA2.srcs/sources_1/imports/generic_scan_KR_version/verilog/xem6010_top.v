@@ -74,7 +74,7 @@ module xem6010_top 	(
     localparam  	ADDR_WIREIN_TRANSFERSIZE 						=       	8'h08;																			// Wire in for specifying expected packet size of emitter pattern 
     localparam  	ADDR_WIREIN_STREAM 									=			8'h09;																			// Wire in for specifying number of transfers to read data
     localparam 		ADDR_WIREIN_PAD_CAPTURED_MASK				=			8'h10;																			// Wire in for masking pad_captured signal based on functional ICs
-    localparam 		ADDR_WIREIN_RAM_MODE						= 8'h11;
+    localparam 		ADDR_WIREIN_PACKETS_IN_TRANSFER						= 8'h11;
     localparam  	ADDR_WIREOUT_STATUS 								=			8'h20;																			// Wire out for FPGA status
     localparam  	ADDR_WIREOUT_SIGNAL 								=			8'h21;																			// Wire out for direct python signal monitoring
 	localparam  	ADDR_WIREOUT_FIFOC0F2 							=	        8'h22;																			// Data count for Chip 0, FIFO 1
@@ -84,7 +84,7 @@ module xem6010_top 	(
     localparam  	ADDR_WIREOUT_EMITTERPATTERNMSB 			= 			8'h26;																			// Emitter pattern register bank MSB
 	localparam 	ADDR_WIREOUT_FIFOSIZE 								= 			8'h27;																			// Max number of words in backend FIFO
 	localparam	ADDR_WIREOUT_FCSTATE								=			8'h28;																			// Wire out for frame controller state
-    localparam ADDR_WIREOUT_RAM_STATUS = 8'h29;
+    localparam ADDR_WIREOUT_RAM_FIRST_ERROR = 8'h29;
     localparam  	ADDR_TRIGGERIN_DATASTREAMREADACK 		=      	8'h40;																			// Trigger in for enabling data stream
     localparam  	ADDR_TRIGGEROUT_DATASTREAMREAD 		=			8'h60;																			// Trigger out for data readout during streaming mode
     localparam  	ADDR_PIPEIN_SCAN 										=			8'h80;																			// Pipe in for scan
@@ -137,10 +137,10 @@ module xem6010_top 	(
 	wire		[OKWIDTH-1:0]											sw_in_measurementMSB_signals;															// Signals for controlling measurements per pattern MSB
 	wire		[OKWIDTH-1:0]											sw_in_frame_control_signals;     															// Signals for controlling the frame controller
     wire		[OKWIDTH-1:0]           								sw_in_pad_catured_mask;               														// Signals for masking pad_captured signal for non-functional chips
-	wire		[OKWIDTH-1:0]											sw_in_ram_mode;																				// Signals for controlling RAM read and write mode
-	wire		[OKWIDTH-1:0]											sw_in_stream_signals;     																		// Signal for indicating the number of 16 bit transfers to read per chip (frames*patterns_per_frame*4800/16)
+	wire		[OKWIDTH-1:0]											sw_in_stream_signals;  																		// Signal for indicating the number of 16 bit transfers to read per chip (frames*patterns_per_frame*4800/16)
+	wire		[OKWIDTH-1:0]											sw_in_packets_in_transfer;   																		
 	wire		[OKWIDTH-1:0]											sw_out_signals;     																				// Signals directly output to python software
-	wire		[OKWIDTH-1:0]											sw_out_ram_status;
+	wire		[OKWIDTH-1:0]											sw_out_ram_first_error;
 	wire		[OKWIDTH-1:0]											cmd_fsm_state;     																				// Error message register for Scan Interface
 	wire		[OKWIDTH-1:0]											msg_stat;     																						// Status Bits for observation & outputs
 	wire		[OKWIDTH-1:0]											fifo_stat;																								// FIFO status bits
@@ -198,6 +198,7 @@ module xem6010_top 	(
 	wire																		data_stream_refclk_domain;
 	wire																		data_stream_ticlk_domain;
 	wire																		read_trigger;
+	wire																		ram_transfer_ready;
 	wire																		read_ack_trigger;
 	wire																		read_ack_trigger_hold;
 	wire		[9:0]															fc_state;
@@ -309,6 +310,7 @@ module xem6010_top 	(
 	wire		[OKWIDTH-1:0]											number_of_frames;
 	wire		[OKWIDTH-1:0]											patterns_per_frame;
     wire		[OKWIDTH*2-1:0]										measurements_per_pattern;
+    wire		[OKWIDTH-1:0]													packets_in_transfer;
 	wire		[NUMBER_OF_CHIPS-1:0]							pad_captured_mask;
 	
 	// FSM outputs
@@ -341,6 +343,9 @@ module xem6010_top 	(
 	wire app_wdf_rdy;
 	wire [15:0] app_wdf_mask;
 	wire sys_rst_sync;
+	wire ram_underflow;
+	wire ram_overflow;
+	wire [15:0] ram_error;
 	
 `ifndef SIMULATION
 	reg sys_rst;
@@ -350,15 +355,10 @@ module xem6010_top 	(
 	wire rwc_read;
 	wire rrc_write;
 	wire [127:0] rrc_data;
-	wire ram_mode_read;
-	wire ram_mode_write;
 	reg ram_reset_active;
 	wire [7:0] rwc_ib_rd_count;
 	wire [7:0] rrc_ob_wr_count;
-	
-	assign ram_mode_read = sw_in_ram_mode[0];
-	assign ram_mode_write = sw_in_ram_mode[1];
-	assign sw_out_ram_status[0] = ram_reset_active;
+
 	
 	always @(posedge ti_clk) ram_reset_active <= sys_rst_sync;
 	
@@ -419,10 +419,6 @@ module xem6010_top 	(
     assign refclk_int = ref_clk_pll;
     assign tx_refclk_int = tx_refclk_mmcm;
     
-//    // RefClk and TxRefClk from PLL
-//    BUFG BUFG_refclk ( .I(ref_clk_pll), .O(refclk_int) );
-//    BUFG BUFG_tx_refclk ( .I(tx_refclk_mmcm), .O(tx_refclk_int) );
-    
 `elsif EXTERNAL_REFCLK
     
     // Refclk from external SMA, TxRefClk from PLL
@@ -437,9 +433,9 @@ module xem6010_top 	(
 	// Use LEDs as status display
 	assign led[0]			=			~sys_rst_sync;
 	assign led[1]			=			~init_calib_complete;
-	assign led[2]			=			~ram_mode_write;
-	assign led[3]			=			~ram_mode_read;
-	assign led[4]			=			~app_en;
+	assign led[2]			=			~ram_underflow;
+	assign led[3]			=			~ram_overflow;
+	assign led[4]			=			~1'b0;
 	assign led[5]			=			~1'b0;
 	assign led[6]           =          ~1'b0;
 	assign led[7]           =          ~1'b0;
@@ -487,6 +483,7 @@ module xem6010_top 	(
     assign number_of_frames =           sw_in_frame_signals[15:0];
     assign patterns_per_frame =         sw_in_pattern_signals[15:0];
     assign measurements_per_pattern =   {sw_in_measurementMSB_signals, sw_in_measurementLSB_signals};
+    assign packets_in_transfer = 		sw_in_packets_in_transfer[15:0];
     assign pad_captured_mask =          sw_in_pad_catured_mask[NUMBER_OF_CHIPS-1:0];
     
     assign sw_out_signals[0]=			1'b0;
@@ -506,6 +503,7 @@ module xem6010_top 	(
     assign sw_out_signals[15]=			1'b0;
     
     assign sw_trigger_out[0]=           read_trigger;
+    assign sw_trigger_out[1]=			ram_transfer_ready;
 	 
 	 assign read_ack_trigger = 			 sw_trigger_in[0];
     
@@ -672,7 +670,7 @@ module xem6010_top 	(
     okWireIn ep08(.ok1(ok1), .ep_addr(ADDR_WIREIN_TRANSFERSIZE), .ep_dataout(emitter_pattern_transfer_size));
     okWireIn ep09(.ok1(ok1), .ep_addr(ADDR_WIREIN_STREAM), .ep_dataout(sw_in_stream_signals));
 	okWireIn ep010(.ok1(ok1), .ep_addr(ADDR_WIREIN_PAD_CAPTURED_MASK), .ep_dataout(sw_in_pad_catured_mask));
-	okWireIn ep011(.ok1(ok1), .ep_addr(ADDR_WIREIN_RAM_MODE), .ep_dataout(sw_in_ram_mode));
+	okWireIn ep011(.ok1(ok1), .ep_addr(ADDR_WIREIN_PACKETS_IN_TRANSFER), .ep_dataout(sw_in_packets_in_transfer));
 
     // Wire Out: Valid Address Range:  0x20-0x3F
     okWireOut ep20 (.ok1(ok1), .ok2(ok2x[ 0*17 +: 17 ]), .ep_addr(ADDR_WIREOUT_STATUS), .ep_datain(msg_stat));
@@ -683,7 +681,7 @@ module xem6010_top 	(
     okWireOut ep28 (.ok1(ok1), .ok2(ok2x[ 5*17 +: 17 ]), .ep_addr(ADDR_WIREOUT_EMITTERPATTERNMSB), .ep_datain(emitter_pattern_register_bank[31:16]));
 	okWireOut ep29 (.ok1(ok1), .ok2(ok2x[ 6*17 +: 17 ]), .ep_addr(ADDR_WIREOUT_FIFOSIZE), .ep_datain(16'd32767));
 	okWireOut ep30 (.ok1(ok1), .ok2(ok2x[ 7*17 +: 17 ]), .ep_addr(ADDR_WIREOUT_FCSTATE), .ep_datain( {6'b0, fc_state} ));
-	okWireOut ep31 (.ok1(ok1), .ok2(ok2x[ 8*17 +: 17 ]), .ep_addr(ADDR_WIREOUT_RAM_STATUS), .ep_datain( sw_out_ram_status));
+	okWireOut ep31 (.ok1(ok1), .ok2(ok2x[ 8*17 +: 17 ]), .ep_addr(ADDR_WIREOUT_RAM_FIRST_ERROR), .ep_datain( sw_out_ram_first_error));
     
     // Trigger In: Valid Address Range (0x40 - 0x5F)
     okTriggerIn ep40 (.ok1(ok1), .ep_addr(ADDR_TRIGGERIN_DATASTREAMREADACK), .ep_clk(refclk_int), .ep_trigger(sw_trigger_in));
@@ -943,7 +941,14 @@ module xem6010_top 	(
 							.app_wdf_wren       (app_wdf_wren),
 							.app_wdf_data       (app_wdf_data),
 							.app_wdf_end        (app_wdf_end),
-							.app_wdf_mask       (app_wdf_mask)
+							.app_wdf_mask       (app_wdf_mask), 
+							
+							.packets_in_transfer(packets_in_transfer),
+							.underflow			(ram_underflow),
+							.overflow			(ram_overflow),
+							.error				(ram_error),
+							.first_error		(sw_out_ram_first_error), 
+							.transfer_ready		(ram_transfer_ready)
 	
 	);
 	
