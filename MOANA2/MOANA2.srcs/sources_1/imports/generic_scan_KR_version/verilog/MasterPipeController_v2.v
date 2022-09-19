@@ -6,45 +6,31 @@
 // v1 was designed to support continous streamout from all FIFOs with no break in dataout. The assumption was that all data in output FIFOs was ready and pipe endpoint expected data every cycle.
 // v2 no longer supports continuous dataout, because data is no longer all ready at one time and the data throughput must be able to handle segmentation.
 // ============================================================================
-module MasterPipeController_v2(
-		rst,
-		clk,
-		pipeO_master_read,
-		pipeO_master_data,
-		word_count,
-        fifo_data_appended, 
-        fifo_read,
-        prev_fifos_empty,
-        prev_fifos_empty_mask,
-        valid
+module MasterPipeController_v2
+#	(
+		parameter 	NUMBER_OF_CHIPS = 		2,
+		parameter 	DATA_WIDTH = 			32,
+		parameter 	OKWIDTH = 				16,
+		parameter 	CHIP_COUNTER_WIDTH = 	5 // Larger than $clog2(NUMBER_OF_CHIPS)
+	)
+	(
+		input 	wire 									rst,
+		input 	wire 									clk,
+		input 	wire 									master_pipe_read,
+		output 	wire [DATA_WIDTH-1:0] 					master_pipe_data,
+		input 	wire [OKWIDTH-1:0] 						word_count,
+        input 	wire [NUMBER_OF_CHIPS*DATA_WIDTH-1:0] 	fifo_data_appended, 
+        output 	wire [NUMBER_OF_CHIPS-1:0] 				fifo_read,
+        input 	wire [NUMBER_OF_CHIPS-1:0] 				prev_fifos_empty,
+        input 	wire [NUMBER_OF_CHIPS-1:0] 				prev_fifos_empty_mask,
+        output 	reg 									valid
         
     );
 
     //-----------------------------------------------------------------------------------
     //  Parameters
     //-----------------------------------------------------------------------------------
-    parameter   NUMBER_OF_CHIPS =     		2;
-    parameter	DATA_WIDTH = 				32;
-    parameter   OKWIDTH =           		16;
-    parameter   CHIP_COUNTER_WIDTH =  		5; // Larger than $clog2(NUMBER_OF_CHIPS)
     localparam 	CHIP_COUNTER_DUMMY_BITS = 	CHIP_COUNTER_WIDTH - 1;
-
-    //-----------------------------------------------------------------------------------
-
-    //-----------------------------------------------------------------------------------
-    //    I/O
-    //-----------------------------------------------------------------------------------
-	input   wire 						                	rst;
-    input   wire                                        	clk;
-    input   wire                                        	pipeO_master_read;
-	output  wire		[DATA_WIDTH-1:0]                   	pipeO_master_data;
-	input   wire		[OKWIDTH-1:0]                   	word_count;
-	input   wire        [NUMBER_OF_CHIPS*DATA_WIDTH-1:0]    fifo_data_appended;
-    output  wire        [NUMBER_OF_CHIPS-1:0]             	fifo_read;
-    input 	wire		[NUMBER_OF_CHIPS-1:0]				prev_fifos_empty;
-    input 	wire		[NUMBER_OF_CHIPS-1:0]				prev_fifos_empty_mask;
-    output 	reg												valid;
-    //-----------------------------------------------------------------------------------
 
     //-----------------------------------------------------------------------------------
     //  Signals
@@ -87,8 +73,8 @@ module MasterPipeController_v2(
 	// The read address points to the LSB of a specific chip's data in fifo_data_appended_padded
 	assign read_address = chip_counter*DATA_WIDTH;
 	
-	// pipeO_master_data is the selected data at the output of the module
-	assign pipeO_master_data = fifo_data_appended_padded[ read_address +: DATA_WIDTH ];
+	// master_pipe_data is the selected data at the output of the module
+	assign master_pipe_data = fifo_data_appended_padded[ read_address +: DATA_WIDTH ];
 	
 	// Onehot chip counter signal for targeting a specific fifo with the fifo_read signal
 	assign chip_counter_onehot =  { {CHIP_COUNTER_DUMMY_BITS{1'b0}},{1'b1} } << chip_counter ;
@@ -105,8 +91,8 @@ module MasterPipeController_v2(
 	// FIFO read is asserted under the following conditions:
 	// Chip data is ready to be read
 	// AND
-	// pipeO_master_read is being asserted at the top level
-	assign fifo_read = ready_for_read & { NUMBER_OF_CHIPS{pipeO_master_read} };
+	// master_pipe_read is being asserted at the top level
+	assign fifo_read = ready_for_read & { NUMBER_OF_CHIPS{master_pipe_read} };
 	
 	// Read active indicates that a read is happening successfully from a FIFO
 	// Read active is asserted under the following conditions:
