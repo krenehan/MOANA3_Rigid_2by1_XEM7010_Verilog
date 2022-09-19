@@ -5,7 +5,7 @@
 //`define EXTERNAL_CLOCKS
 
 // Simulation flag
-//`define SIMULATION
+`define SIMULATION
 
 //=============================================================================
 //  Top-level verilog module for the XEM7010 Opal Kelly Board
@@ -123,9 +123,7 @@ module xem6010_top 	(
 	wire		[OKWIDTH-1:0]											pipeI_data;     																						// Opal Kelly HI to ok2core Buffer Data Interface
 	wire																		pipeO_read;     																						// Flag indicating outgoing data coming
 	wire		[OKWIDTH-1:0]											pipeO_data;     																						// ok2core Buffer to Opal Kelly HI Data Interface 
-	wire																		pipeO_master_read;     																		// Flag indicating outgoing data coming
-	wire																pipeO_master_valid;
-	wire		[32-1:0]											pipeO_master_data;     																		// Master FIFO data 
+	wire																		pipeO_master_read; 																		// Master FIFO data 
 	
 	// Wires
 	wire		[OKWIDTH-1:0]											msg_ctrl;     																							// Control Word Input (for soft reset, etc..)
@@ -204,8 +202,6 @@ module xem6010_top 	(
 	wire		[9:0]															fc_state;
 	wire 																	block_next_streamout_refclk_domain;
 	wire 																	block_next_streamout_ticlk_domain;
-    wire    [NUMBER_OF_CHIPS-1:0]                           next_streamout_will_be_blocked;
-	wire		[NUMBER_OF_CHIPS-1:0]							blocking;
 	
 
 	//------------------------------------------------------------------------
@@ -248,48 +244,99 @@ module xem6010_top 	(
 	//  FIFO Signals
 	//------------------------------------------------------------------------
 	// Global FIFO wires
-	wire		[NUMBER_OF_CHIPS-1:0]											fifo_clr;
+	wire		[NUMBER_OF_CHIPS-1:0]							fifo_clr;
 	
 	// MOANA to FIFO Wires
-	wire		[NUMBER_OF_CHIPS-1:0]											tx_flagout;
-	wire		[NUMBER_OF_CHIPS-1:0]											tx_dataout;
-	
-	// FIFO to Computer Wires
-	wire		[3:0]															fifo_full														[NUMBER_OF_CHIPS-1:0];
-	wire		[3:0]															fifo_overflow												[NUMBER_OF_CHIPS-1:0];
-	wire		[3:0]															fifo_empty													[NUMBER_OF_CHIPS-1:0];
-	wire		[3:0]															fifo_underflow											[NUMBER_OF_CHIPS-1:0];
-	
-	// FIFO to Computer Pipe
-	wire		[OKWIDTH-1:0]											pipeO_fifo_data_16b;		// ok2core Buffer to Opal Kelly HI Data Interface
-	wire		[OKWIDTH-1:0]											pipeO_fifo_data_16b_shuffled;		// Shuffle Byte1 and Byte2 going to PC
-	wire		[NUMBER_OF_CHIPS-1:0]							master_pipe_controller_read;
-	
-	// FIFO to FIFO Wires				
-	wire		[3:0]															fifo_valid													[NUMBER_OF_CHIPS-1:0];
-	wire		[7:0]															pipeO_fifo_data_8b									[NUMBER_OF_CHIPS-1:0];
-	wire		[31:0]														pipeO_fifo_data_32b									[NUMBER_OF_CHIPS-1:0];
-	wire		[31:0]														pipeO_fifo_data_32b_reversed					[NUMBER_OF_CHIPS-1:0];
-	wire 	[127:0]														pipeO_fifo_data_128b;
-	wire		[10:0]														fifo_rd_data_count;
-	wire		[NUMBER_OF_CHIPS-1:0]										pad_captured;
-	wire																		data_loaded												[NUMBER_OF_CHIPS-1:0];
-	wire																		read_issued												[NUMBER_OF_CHIPS-1:0];
+	wire		[NUMBER_OF_CHIPS-1:0]							tx_flagout;
+	wire		[NUMBER_OF_CHIPS-1:0]							tx_dataout;
+	wire		[NUMBER_OF_CHIPS-1:0]							pad_captured;
+	wire		[NUMBER_OF_CHIPS-1:0]							data_loaded;
+    wire    	[NUMBER_OF_CHIPS-1:0]                           next_streamout_will_be_blocked;
+	wire		[NUMBER_OF_CHIPS-1:0]							blocking;
 	
 	// Padding wires
 	wire		[NUMBER_OF_CHIPS-1:0]							pad_fifo_valid;
 	wire		[NUMBER_OF_CHIPS-1:0]							pad_fifo_empty;
+	wire		[NUMBER_OF_CHIPS-1:0]							pad_fifo_full;
 	wire		[NUMBER_OF_CHIPS-1:0]							pad_fifo_data;
 	wire		[NUMBER_OF_CHIPS-1:0]							pad_fifo_rd;
+	wire		[11:0]											pad_fifo_data_count [NUMBER_OF_CHIPS-1:0];
+	wire		[NUMBER_OF_CHIPS-1:0]							pad_fifo_overflow;
 	wire		[NUMBER_OF_CHIPS-1:0]							tx_dataout_padded;
 	wire		[NUMBER_OF_CHIPS-1:0]							tx_flagout_padded;
+	
+	// Per-chip FIFO signals
+	wire		[1:0]											fifo_full						[NUMBER_OF_CHIPS-1:0];
+	wire		[1:0]											fifo_overflow					[NUMBER_OF_CHIPS-1:0];
+	wire		[1:0]											fifo_empty						[NUMBER_OF_CHIPS-1:0];
+	wire		[1:0]											fifo_underflow					[NUMBER_OF_CHIPS-1:0];
+	wire		[1:0]											fifo_valid						[NUMBER_OF_CHIPS-1:0];
+	wire		[7:0]											pipeO_fifo_data_8b				[NUMBER_OF_CHIPS-1:0];
+	wire		[31:0]											pipeO_fifo_data_32b				[NUMBER_OF_CHIPS-1:0];
+	wire		[31:0]											pipeO_fifo_data_32b_reversed	[NUMBER_OF_CHIPS-1:0];
+
+	// Master pipe wires
+	wire		[NUMBER_OF_CHIPS-1:0]							master_pipe_controller_read;     																		// Flag indicating outgoing data coming
+	wire														master_pipe_controller_valid;
+	wire		[32-1:0]										master_pipe_controller_data;
+	
+	// DRAM input buffer signals
+	wire 		[127:0]											ib_dout_128b;	
+	wire 														ib_rd_en;
+	wire 														ib_full;
+	wire 														ib_empty;
+	wire 														ib_valid;
+	wire 														ib_overflow;
+	wire 														ib_underflow;
+	wire 		[9:0] 											ib_wr_data_count;
+	wire 		[7:0] 											ib_rd_data_count;
+	
+	// DRAM signals
+	wire 		[28:0] 											app_addr;
+	wire 		[2:0] 											app_cmd;
+	wire 														app_en;
+	wire 		[127:0] 										app_wdf_data;
+	wire 														app_wdf_end;
+	wire 														app_wdf_wren;
+	wire 		[127:0] 										app_rd_data;
+	wire 														app_rd_data_end;
+	wire 														app_rd_data_valid;
+	wire 														app_rdy;
+	wire 														app_wdf_rdy;
+	wire 		[15:0] 											app_wdf_mask;
+	wire 														sys_rst_sync;
+	wire 														ram_underflow;
+	wire 														ram_overflow;
+	wire 														packet_cnt_full;
+	wire 		[15:0] 											ram_error;
+	reg 														ram_reset_active;
+	
+`ifndef SIMULATION
+	reg 														sys_rst;
+	wire 														init_calib_complete;
+`endif
+
+	// DRAM output buffer signals
+	wire 		[127:0] 										ob_din_128b;
+	wire  														ob_wr_en;
+	wire  														ob_full;
+	wire  														ob_empty;
+	wire  														ob_valid;
+	wire  														ob_overflow;
+	wire  														ob_underflow;
+	wire		[10:0]											ob_rd_data_count;
+	wire 		[7:0] 											ob_wr_data_count;
+
+	// FIFO to Computer Pipe
+	wire		[OKWIDTH-1:0]									pipeO_fifo_data_16b;
+	wire		[OKWIDTH-1:0]									pipeO_fifo_data_16b_shuffled;
     
     
 	//------------------------------------------------------------------------
 	//  Frame controller
 	//------------------------------------------------------------------------
 	// Pipe in wires
-	wire																		pipeI_emitter_pattern_write;
+	wire																pipeI_emitter_pattern_write;
 	wire		[OKWIDTH-1:0]											pipeI_emitter_pattern_data;
 	
 	// FSM inputs
@@ -327,40 +374,8 @@ module xem6010_top 	(
 	wire		[NUMBER_OF_CHIPS-1:0]							pattern_emitter_packet;
 	
 	
-	//------------------------------------------------------------------------
-	// DRAM signals
-	//------------------------------------------------------------------------
-	wire [28:0] app_addr;
-	wire [2:0] app_cmd;
-	wire app_en;
-	wire [127:0] app_wdf_data;
-	wire app_wdf_end;
-	wire app_wdf_wren;
-	wire [127:0] app_rd_data;
-	wire app_rd_data_end;
-	wire app_rd_data_valid;
-	wire app_rdy;
-	wire app_wdf_rdy;
-	wire [15:0] app_wdf_mask;
-	wire sys_rst_sync;
-	wire ram_underflow;
-	wire ram_overflow;
-	wire [15:0] ram_error;
-	
-`ifndef SIMULATION
-	reg sys_rst;
-	wire init_calib_complete;
-`endif
-	
-	wire rwc_read;
-	wire rrc_write;
-	wire [127:0] rrc_data;
-	reg ram_reset_active;
-	wire [7:0] rwc_ib_rd_count;
-	wire [7:0] rrc_ob_wr_count;
 
 	
-	always @(posedge ti_clk) ram_reset_active <= sys_rst_sync;
 	
 	//------------------------------------------------------------------------
 	// Debug signals
@@ -375,7 +390,8 @@ module xem6010_top 	(
     // User Interface Connections for Scan Chain
     //------------------------------------------------------------------------
     // Hardware Inputs / Outputs
-    assign rst 				=			sw_rst | sys_rst_sync;     									// global reset (active high)
+    assign rst 				=			sw_rst | sys_rst_sync;
+    always @(posedge ti_clk) ram_reset_active <= sys_rst_sync;     									// global reset (active high)
     
     // Control/Config Inputs
     assign clr_inbuf 		=			msg_ctrl[1];            					// clear input buffer 
@@ -435,7 +451,7 @@ module xem6010_top 	(
 	assign led[1]			=			~init_calib_complete;
 	assign led[2]			=			~ram_underflow;
 	assign led[3]			=			~ram_overflow;
-	assign led[4]			=			~1'b0;
+	assign led[4]			=			~packet_cnt_full;
 	assign led[5]			=			~1'b0;
 	assign led[6]           =          ~1'b0;
 	assign led[7]           =          ~1'b0;
@@ -675,7 +691,7 @@ module xem6010_top 	(
     // Wire Out: Valid Address Range:  0x20-0x3F
     okWireOut ep20 (.ok1(ok1), .ok2(ok2x[ 0*17 +: 17 ]), .ep_addr(ADDR_WIREOUT_STATUS), .ep_datain(msg_stat));
     okWireOut ep21 (.ok1(ok1), .ok2(ok2x[ 1*17 +: 17 ]), .ep_addr(ADDR_WIREOUT_SIGNAL), .ep_datain(sw_out_signals));
-	okWireOut ep23 (.ok1(ok1), .ok2(ok2x[ 2*17 +: 17 ]), .ep_addr(ADDR_WIREOUT_FIFOC0F2), .ep_datain({ 5'b0, fifo_rd_data_count }));
+	okWireOut ep23 (.ok1(ok1), .ok2(ok2x[ 2*17 +: 17 ]), .ep_addr(ADDR_WIREOUT_FIFOC0F2), .ep_datain({ 5'b0, ob_rd_data_count }));
 	okWireOut ep26 (.ok1(ok1), .ok2(ok2x[ 3*17 +: 17 ]), .ep_addr(ADDR_WIREOUT_FIFOSTATUS), .ep_datain(fifo_stat));
     okWireOut ep27 (.ok1(ok1), .ok2(ok2x[ 4*17 +: 17 ]), .ep_addr(ADDR_WIREOUT_EMITTERPATTERNLSB), .ep_datain(emitter_pattern_register_bank[15:0]));
     okWireOut ep28 (.ok1(ok1), .ok2(ok2x[ 5*17 +: 17 ]), .ep_addr(ADDR_WIREOUT_EMITTERPATTERNMSB), .ep_datain(emitter_pattern_register_bank[31:16]));
@@ -740,27 +756,7 @@ module xem6010_top 	(
     //  TX Data FIFO for Chip 0
 	//  FIFO signals have naming scheme signal_name[chip_number][fifo_number]
     //-------------------------------------------------------------------------------
-	assign fifo_stat[0] =		fifo_full[0][0];
-	assign fifo_stat[1] =		fifo_full[0][2];
-	assign fifo_stat[2] =		fifo_overflow[0][0];
-	assign fifo_stat[3] =		fifo_overflow[0][2];
-	assign fifo_stat[4] =		fifo_empty[0][0];
-	assign fifo_stat[5] =		fifo_empty[0][2];
-	assign fifo_stat[6] =		fifo_underflow[0][0];
-	assign fifo_stat[7] =		fifo_underflow[0][2];
-
-    //-------------------------------------------------------------------------------
-    //  TX Data FIFO for Chip 1
-	//  FIFO signals have naming scheme signal_name[chip_number][fifo_number]
-    //-------------------------------------------------------------------------------	
-	assign fifo_stat[8] =		fifo_full[1][0];
-	assign fifo_stat[9] =		fifo_full[1][2];
-	assign fifo_stat[10]=		fifo_overflow[1][0];
-	assign fifo_stat[11]=		fifo_overflow[1][2];
-	assign fifo_stat[12]=		fifo_empty[1][0];
-	assign fifo_stat[13]=		fifo_empty[1][2];
-	assign fifo_stat[14]=		fifo_underflow[1][0];
-	assign fifo_stat[15]=		fifo_underflow[1][2];
+	assign fifo_stat = 0;
 	
     //-------------------------------------------------------------------------------
     //  FIFOs for data readout
@@ -775,16 +771,16 @@ module xem6010_top 	(
                 // Flagout Module for catching padded bit and initializing data read
                 //-------------------------------------------------------------------------------
                 TxFlagOut                 fifo_flagout_1	(
-                                                .rst(fifo_clr[i]),                                             
-                                                .chip_rst(pad_rstasync),
-                                                .tx_clk(tx_refclk_int),
-                                                .tx_data(tx_dataout[i]),
-                                                .tx_flagout(tx_flagout[i]),
-                                                .data_loaded(data_loaded[i]),
-                                                .block_next_streamout(block_next_streamout_ticlk_domain),
-                                                .pad_captured(pad_captured[i]), 
-                                                .next_streamout_will_be_blocked(next_streamout_will_be_blocked[i]), 
-                                                .blocking(blocking[i])
+                                                .rst								(fifo_clr[i]),                                             
+                                                .chip_rst							(pad_rstasync),
+                                                .tx_clk								(tx_refclk_int),
+                                                .tx_data							(tx_dataout[i]),
+                                                .tx_flagout							(tx_flagout[i]),
+                                                .data_loaded						(data_loaded[i]),
+                                                .block_next_streamout				(block_next_streamout_ticlk_domain),
+                                                .pad_captured						(pad_captured[i]), 
+                                                .next_streamout_will_be_blocked		(next_streamout_will_be_blocked[i]), 
+                                                .blocking							(blocking[i])
                 );
 				
 				
@@ -792,15 +788,19 @@ module xem6010_top 	(
 				// FIFO for storing bits that accumulate due to padding 
 				//-------------------------------------------------------------------------------
 				fifo_W1_R1   pad_fifo         (
-                                                            .rst				        (fifo_clr[i]),
-                                                            .clk				        (tx_refclk_int),
-                                                            .din				        (tx_dataout[i]),
+                                                            .rst				    (fifo_clr[i]),
+                                                            .clk				    (tx_refclk_int),
+                                                            .data_count				(pad_fifo_data_count[i]), // [11:0]
+                                                            
                                                             .wr_en				    (tx_flagout[i]),
+                                                            .din				    (tx_dataout[i]),
+                                                            .full				    (pad_fifo_full[i]),
+                                                            .overflow				(pad_fifo_overflow[i]),
+                                                            
                                                             .rd_en				    (pad_fifo_rd[i]),
+                                                            .dout				    (pad_fifo_data[i]),
                                                             .empty				    (pad_fifo_empty[i]),
-                                                            .valid				    (pad_fifo_valid[i]),
-                                                            .full				        (),
-                                                            .dout				    (pad_fifo_data[i])
+                                                            .valid				    (pad_fifo_valid[i])
 				);
 				
 				
@@ -808,14 +808,14 @@ module xem6010_top 	(
 				// Padding module for translating 20b bin data to 32b bin data
 				//-------------------------------------------------------------------------------
 				TxDataOutPadding pad_unit   (
-															.rst				(fifo_clr[i]),
-															.clk				(tx_refclk_int),
-															.prev_fifo_valid(pad_fifo_valid[i]),
-															.prev_fifo_empty(pad_fifo_empty[i]),
-															.prev_fifo_data (pad_fifo_data[i]),
-															.prev_fifo_rd_en(pad_fifo_rd[i]),
-															.next_fifo_data (tx_dataout_padded[i]),
-															.next_fifo_wr_en(tx_flagout_padded[i])
+															.rst					(fifo_clr[i]),
+															.clk					(tx_refclk_int),
+															.prev_fifo_valid		(pad_fifo_valid[i]),
+															.prev_fifo_empty		(pad_fifo_empty[i]),
+															.prev_fifo_data 		(pad_fifo_data[i]),
+															.prev_fifo_rd_en		(pad_fifo_rd[i]),
+															.next_fifo_data 		(tx_dataout_padded[i]),
+															.next_fifo_wr_en		(tx_flagout_padded[i])
 				);
             
             
@@ -850,6 +850,7 @@ module xem6010_top 	(
 									.wr_en        (fifo_valid[i][0]),
 									.din            (pipeO_fifo_data_8b[i]),
 									.full            (fifo_full[i][1]),
+									.overflow		(fifo_overflow[i][1]),
 									
 									.rd_en         (master_pipe_controller_read[i]),
 									.dout           (pipeO_fifo_data_32b[i]),
@@ -877,35 +878,37 @@ module xem6010_top 	(
         MasterPipeControllerUnit(   
                                     .rst                							(rst),
                                     .clk             								(ti_clk),
-                                    .pipeO_master_read  							(~fifo_full[0][2]),
-                                    .pipeO_master_data  							(pipeO_master_data),
+                                    .master_pipe_read	  							(~ib_full),
+                                    .master_pipe_data	  							(master_pipe_controller_data),
                                     .word_count         							(sw_in_stream_signals),
                                     .fifo_data_appended  							( {pipeO_fifo_data_32b_reversed[1], pipeO_fifo_data_32b_reversed[0]} ),
                                     .fifo_read           							(master_pipe_controller_read),
                                     .prev_fifos_empty								( { fifo_empty[1][1], fifo_empty[0][1] }),
                                     .prev_fifos_empty_mask							(pad_captured_mask),
-                                    .valid											(pipeO_master_valid)
+                                    .valid											(master_pipe_controller_valid)
 	);
 	
             
 	//-------------------------------------------------------------------------------
     //  FIFO for passing data to DRAM
     //-------------------------------------------------------------------------------
-	fifo_W32_R128 fifo_2 	(
+	fifo_W32_R128 ddr3_ib 	(
 							.rst													(|fifo_clr),
 							
 							.wr_clk													(ti_clk),
-							.wr_en													(pipeO_master_valid),
-							.din													(pipeO_master_data),
-							.full													(fifo_full[0][2]),
-							.wr_data_count											(), // [9:0]
+							.wr_en													(master_pipe_controller_valid),
+							.din													(master_pipe_controller_data),
+							.full													(ib_full),
+							.overflow												(ib_overflow),
+							.wr_data_count											(ib_wr_data_count), // [9:0]
 							
 							.rd_clk													(sys_clk),
-							.rd_en													(rwc_read),
-							.dout													(pipeO_fifo_data_128b),
-							.empty													(fifo_empty[0][2]),
-							.valid													(fifo_valid[0][2]),
-							.rd_data_count											(rwc_ib_rd_count) //[7:0]
+							.rd_en													(ib_rd_en),
+							.dout													(ib_dout_128b),
+							.empty													(ib_empty),
+							.underflow												(ib_underflow),
+							.valid													(ib_valid),
+							.rd_data_count											(ib_rd_data_count) //[7:0]
 	);
 	
 	
@@ -917,16 +920,16 @@ module xem6010_top 	(
 							.reset              (rst),
 							.calib_done         (init_calib_complete),
 							
-							.ib_re              (rwc_read),
-							.ib_data            (pipeO_fifo_data_128b),
-							.ib_count           (rwc_ib_rd_count),
-							.ib_valid           (fifo_valid[0][2]),
-							.ib_empty           (fifo_empty[0][2]),
+							.ib_re              (ib_rd_en),
+							.ib_data            (ib_dout_128b),
+							.ib_count           (ib_rd_data_count),
+							.ib_valid           (ib_valid),
+							.ib_empty           (ib_empty),
 							
-							.ob_we              (rrc_write),
-							.ob_data            (rrc_data),
-							.ob_count           (rrc_ob_wr_count),
-							.ob_full            (fifo_full[0][3]),
+							.ob_we              (ob_wr_en),
+							.ob_data            (ob_din_128b),
+							.ob_count           (ob_wr_data_count),
+							.ob_full            (ob_full),
 							
 							.app_rdy            (app_rdy),
 							.app_en             (app_en),
@@ -946,6 +949,7 @@ module xem6010_top 	(
 							.packets_in_transfer(packets_in_transfer),
 							.underflow			(ram_underflow),
 							.overflow			(ram_overflow),
+							.packet_cnt_full	(packet_cnt_full),
 							.error				(ram_error),
 							.first_error		(sw_out_ram_first_error), 
 							.transfer_ready		(ram_transfer_ready)
@@ -1008,21 +1012,23 @@ module xem6010_top 	(
 	//-------------------------------------------------------------------------------
     //  FIFO for collecting transfer from DRAM
     //-------------------------------------------------------------------------------
-	fifo_W128_R16 fifo_3 	(
+	fifo_W128_R16 ddr3_ob 	(
 							.rst													(|fifo_clr),
 							
 							.wr_clk													(sys_clk),
-							.wr_en													(rrc_write),
-							.din													(rrc_data),
-							.full													(fifo_full[0][3]),
-							.wr_data_count											(rrc_ob_wr_count), // [7:0]
+							.wr_en													(ob_wr_en),
+							.din													(ob_din_128b),
+							.full													(ob_full),
+							.overflow												(ob_overflow),
+							.wr_data_count											(ob_wr_data_count), // [7:0]
 							
 							.rd_clk													(ti_clk),
 							.rd_en													(pipeO_master_read),
 							.dout													(pipeO_fifo_data_16b),
-							.empty													(fifo_empty[0][3]),
-							.valid													(fifo_valid[0][3]), 
-							.rd_data_count											(fifo_rd_data_count) // [10:0]
+							.empty													(ob_empty),
+							.valid													(ob_valid), 
+							.underflow												(ob_underflow),
+							.rd_data_count											(ob_rd_data_count) // [10:0]
 	);
 	
 	// Shuffle bits before bus transfer
