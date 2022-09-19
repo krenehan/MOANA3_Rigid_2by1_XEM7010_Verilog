@@ -8,6 +8,21 @@
 *
 !*/
 !.gitignore
+#########
+#Specifics
+#########
+MOANA2/MOANA2.cache
+planAhead_run*
+MOANA2/MOANA2.runs
+isim
+netgen
+MOANA2/MOANA2.sim
+clk_wiz_0_ex
+xem6010
+MOANA2/MOANA2.srcs/sources_1/imports/generic_scan_KR_version/xilinx/
+MOANA2/MOANA2.gen/sources_1/ip/ddr3_256_16/ddr3_256_16/example_design/par/
+MOANA2/MOANA2.gen/sources_1/ip/ddr3_256_16/ddr3_256_16/example_design/rtl/
+MOANA2/MOANA2.gen/sources_1/ip/ddr3_256_16/ddr3_256_16/user_design/
 ###########################################################################
 ##	VIVADO
 ###########################################################################
