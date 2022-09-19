@@ -148,6 +148,19 @@ task check_capture_idle;
 	end
 endtask
 
+task check_transfer_ready;
+	begin
+		$display("TIME %0t: INFO: checking transfer ready", $time);
+		UpdateTriggerOuts;
+		if (IsTriggered(ADDR_TRIGGEROUT_DATASTREAMREAD, 16'b10) === 1) begin
+			$display("TIME %0t: INFO: transfer ready trigger detected", $time);
+			transfer_ready = 1'b1;
+		end else begin
+			transfer_ready = 1'b0;
+		end		
+	end
+endtask
+
 task force_histogram;
 	begin
 		// Assert force_dataout
