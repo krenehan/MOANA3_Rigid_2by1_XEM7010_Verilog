@@ -3,7 +3,7 @@
 module mem_arbiter_safety 
 #	(
 		parameter OKWIDTH			= 16,
-		parameter ADDR_WIDTH 		= 29
+		parameter ADDR_WIDTH 		= 28
 	)
 	(
 		input 	wire 						reset,
@@ -11,6 +11,7 @@ module mem_arbiter_safety
 		input 	wire	[31:0] 				state,
 		input 	wire 	[ADDR_WIDTH-1:0] 	wr_addr,
 		input 	wire 	[ADDR_WIDTH-1:0] 	rd_addr,
+		input 	wire						packet_cnt_full,
 		
 		output 	reg  						underflow,
 		output 	reg  						overflow, 
@@ -37,7 +38,8 @@ module mem_arbiter_safety
 	// Error codes		   
 	localparam 	E_NONE					= 16'd0,
 				E_UNDERFLOW				= 16'd1,
-				E_OVERFLOW				= 16'd2;
+				E_OVERFLOW				= 16'd2,
+				E_PACKET_CNT_FULL		= 16'd3;
 				
 				
 	//------------------------------------------------------------------------
@@ -58,8 +60,8 @@ module mem_arbiter_safety
 	//------------------------------------------------------------------------
 	// Stores past value of read address and write address MSB for overflow detection
 	//------------------------------------------------------------------------
-	always @(posedge clk) rd_addr_msb_prev <= rd_addr[28];
-	always @(posedge clk) wr_addr_msb_prev <= wr_addr[28];
+	always @(posedge clk) rd_addr_msb_prev <= rd_addr[ADDR_WIDTH-1];
+	always @(posedge clk) wr_addr_msb_prev <= wr_addr[ADDR_WIDTH-1];
 			   
 			   
 	//------------------------------------------------------------------------
@@ -190,6 +192,15 @@ module mem_arbiter_safety
 			if ((wr_addr >= rd_addr) & rd_addr_should_be_higher_than_wr_addr) begin
 				error <= E_OVERFLOW;
 				overflow <= 1'b1;
+			end
+			
+			if (flip_cnt > 1) begin
+				error <= E_OVERFLOW;
+				overflow <= 1'b1;
+			end
+			
+			if (packet_cnt_full) begin
+				error <= E_PACKET_CNT_FULL;
 			end
 		
 		end
