@@ -102,13 +102,15 @@
 `define DigitalCore_AQCDLLFinestWord_idx(n)  (n * 1      +    312)+:     1 //    312:312   
 //-------------------------------------------------------------------------------------------
 
-`define SHORTEN_SIM
+//`define SHORTEN_SIM
+`define RUN_CONTINUOUS
+
 `define TIME_OK_WAIT 50000
 
 module xem6010_top_tb;
 
 	// Options
-	localparam RANDOM_TEST_PATTERN = "True";
+	localparam RANDOM_TEST_PATTERN = "False";
 	
 	// Additional settings derived from options above
 	`ifdef SHORTEN_SIM
@@ -119,7 +121,7 @@ module xem6010_top_tb;
 
 	// TEST SETTINGS
 	localparam NUMBER_OF_CHIPS = 2;
-	localparam NUMBER_OF_CAPTURES = 1;
+	localparam NUMBER_OF_CAPTURES = 10;
 	localparam NUMBER_OF_FRAMES = 16'd1;
 	localparam PATTERNS_PER_FRAME = 16'd1;
 	localparam PACKETS_IN_TRANSFER = 16'd1; // Should equal frames * patterns
@@ -182,7 +184,7 @@ module xem6010_top_tb;
     localparam SIGNAL_CAPTURE_START =  16'h0004;
     localparam SIGNAL_CAPTURE_INTERRUPT = 16'h0008;
     localparam SIGNAL_FRAME_CONTROLLER_RESET = 16'h0010;
-    localparam SIGNAL_FSM_BYPASS = 16'h0020;
+    localparam SIGNAL_FSM_BYPASS = 16'h0020; 
     localparam SIGNAL_DATA_STREAM = 16'h0040;
 	 
     // Software Out Frame Controller Signals
@@ -255,6 +257,7 @@ module xem6010_top_tb;
 	reg [15:0] ram_status_wire_out_register;
 	reg [15:0] power_wire_in_register;
 	reg [15:0] frame_controller_wire_out_register;
+	reg transfer_ready;
 	
 	reg [15:0] capture_count;
 	wire [15:0] frame_count;
@@ -622,6 +625,7 @@ module xem6010_top_tb;
 		ram_status_wire_out_register = 0;
 		frame_controller_wire_out_register = 0;
 		force_dataout = 0;
+		transfer_ready = 0;
 		
 		for (k=0;k<NUMBER_OF_CHIPS;k=k+1) begin
 			//global_scan_in_data[k] = 0;
@@ -662,9 +666,6 @@ module xem6010_top_tb;
 		// Test data in
 		ScanBitsRd[0][`DigitalCore_TestDataIn] = TEST_PATTERN_0;
 		ScanBitsRd[1][`DigitalCore_TestDataIn] = TEST_PATTERN_1;
-
-		//Scan configuration settings in
-		//scan_in;
 		
 		// Configure frame controller settings
 		send_frame_data;
@@ -678,13 +679,33 @@ module xem6010_top_tb;
 		// Reset chips
 		cell_reset;
 		
+		`ifdef RUN_CONTINUOUS
+		
+			// Set FSM bypass
+			$display("TIME %0t: INFO: setting FSM bypass", $time);
+			tiehi_fc_signal(SIGNAL_FSM_BYPASS);
+			#(5000000);
+			
+		`endif
+		
 		// Main capture and readout loop
 		for (k=0;k<NUMBER_OF_CAPTURES;k=k+1) begin
 		
 			// Set the capture count
 			capture_count = k;
-
-			`ifdef SHORTEN_SIM
+			
+			`ifdef RUN_CONTINUOUS
+			
+				// Wait for transfer ready signal
+				check_transfer_ready;
+				check_transfer_ready;
+				while (!(transfer_ready === 1'b1)) begin
+					$display("TIME %0t: INFO: waiting for transfer ready", $time);
+					#(`TIME_OK_WAIT);
+					check_transfer_ready;
+				end
+			
+			`elsif SHORTEN_SIM
 			
 				// Force histogram streamout
 				init_capture;
@@ -693,7 +714,7 @@ module xem6010_top_tb;
 				force_histogram;
 			
 			`else
-			
+
 				// Run frame controller
 				run_capture;
 			
@@ -708,10 +729,18 @@ module xem6010_top_tb;
 			// Print the pipeout
 			print_pipeOut_flat(k);
 			
-			// Add some margin at the end of the sim
-			#(1000);
+	end
+	
+		`ifdef RUN_CONTINUOUS
+		
+			// Set FSM bypass
+			$display("TIME %0t: INFO: setting FSM bypass", $time);
+			tielo_fc_signal(SIGNAL_FSM_BYPASS);
 			
-		end
+		`endif
+
+		// Add some margin at the end of the sim
+		#(1000);
 		
 		// End sim
 		$display("TIME %0t: INFO: simulation completed successfully", $time);
