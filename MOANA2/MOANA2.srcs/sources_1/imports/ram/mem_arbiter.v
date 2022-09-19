@@ -15,7 +15,8 @@ module mem_arbiter
 		parameter MASK_WIDTH 		= 16,
 		parameter OKWIDTH			= 16,
 		parameter CMD_WIDTH			= 3,
-		parameter ADDR_WIDTH 		= 29
+		parameter UI_ADDR_WIDTH 	= 29,
+		parameter ADDR_WIDTH		= 28
 	)
 	(
 		
@@ -41,7 +42,7 @@ module mem_arbiter
 		input  wire          			app_rdy,
 		output reg           			app_en,
 		output reg  [CMD_WIDTH-1:0]    	app_cmd,
-		output reg  [ADDR_WIDTH-1:0]   	app_addr,
+		output reg  [UI_ADDR_WIDTH-1:0] app_addr, // This address is 29 bits because the MSB is for rank, which is always a 0
 		
 		// MIG read interface
 		input  wire [DATA_WIDTH-1:0]  	app_rd_data,
@@ -62,6 +63,7 @@ module mem_arbiter
 		output wire 		 			transfer_ready,
 		output wire			 			underflow,
 		output wire			 			overflow,
+		output wire						packet_cnt_full,
 		output wire [OKWIDTH-1:0] 	 	error,
 		output wire	[OKWIDTH-1:0]	 	first_error
 		
@@ -69,6 +71,8 @@ module mem_arbiter
 
 	// Don't modify this
 	localparam ADDRESS_INCREMENT   	= 5'd8; 	// UI Address is a word address. BL8 Burst Mode = 8
+	localparam MAX_ADDR				= 28'hFFF_FFFF; // Maximum word address
+	localparam PACKET_CNT_WIDTH		= 19; // clog2(MAX_ADDR / ADDRESS_INCREMENT / WRITES_IN_PACKET)
 	
 	// States
 	localparam S_IDLE    	= 0,
@@ -162,8 +166,8 @@ module mem_arbiter
 	
 		if (reset_d) begin
 			state             <= S_CALIB_WAIT;
-			cmd_byte_addr_wr  <= 29'b0;
-			cmd_byte_addr_rd  <= 29'b0;
+			cmd_byte_addr_wr  <= 28'b0;
+			cmd_byte_addr_rd  <= 28'b0;
 			app_en            <= 1'b0;
 			app_cmd           <= 3'b0;
 			app_addr          <= 28'b0;
@@ -335,7 +339,7 @@ module mem_arbiter
 	// Packet Counter
 	//------------------------------------------------------------------------
 	up_down_counter
-		#		(	.WIDTH				(16))
+		#		(	.WIDTH				(PACKET_CNT_WIDTH))
 	u_packet_cnt(
 					.clk				(clk),
 					.rst				(reset),
@@ -343,7 +347,8 @@ module mem_arbiter
 					.dec				(dec_packet_cnt),
 					.empty				(packet_cnt_empty),
 					.empty_next_cycle	(packet_cnt_empty_next_cycle),
-					.count				(packet_cnt)
+					.count				(packet_cnt),
+					.full				(packet_cnt_full)
 	);		
 	
 	
@@ -361,6 +366,7 @@ module mem_arbiter
 					.state				(state),
 					.wr_addr			(cmd_byte_addr_wr),
 					.rd_addr			(cmd_byte_addr_rd),
+					.packet_cnt_full	(packet_cnt_full),
 					.underflow			(underflow),
 					.overflow			(overflow),
 					.error				(error),
@@ -374,7 +380,7 @@ module mem_arbiter
 	task init_read;
 		begin
 			// Load read address
-			app_addr <= cmd_byte_addr_rd;						
+			app_addr <= {1'b0, cmd_byte_addr_rd};						
 			
 			// Move state
 			state <= S_READ_0;
@@ -388,7 +394,7 @@ module mem_arbiter
 	task init_write;
 		begin
 			// Load write address
-			app_addr <= cmd_byte_addr_wr;
+			app_addr <= {1'b0, cmd_byte_addr_wr};
 			
 			// Assert FIFO read enable
 			ib_re <= 1'b1;
