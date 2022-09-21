@@ -5,7 +5,7 @@
 //`define EXTERNAL_CLOCKS
 
 // Simulation flag
-`define SIMULATION
+//`define SIMULATION
 
 //=============================================================================
 //  Top-level verilog module for the XEM7010 Opal Kelly Board
@@ -384,6 +384,10 @@ module xem6010_top 	(
 	reg																		verify_tx_refclk_running;
 	reg																		verify_scan_clk_p_running;
 	reg																		verify_scan_clk_n_running;
+	always @(posedge refclk_int) verify_refclk_running <= ~verify_refclk_running;
+	always @(posedge tx_refclk_int) verify_tx_refclk_running <= ~verify_tx_refclk_running;
+	always @(posedge s_clk_p) verify_scan_clk_p_running <= verify_scan_clk_p_running;
+	always @(posedge s_clk_n) verify_scan_clk_n_running <= verify_scan_clk_n_running;
     
     
     //------------------------------------------------------------------------
@@ -447,14 +451,14 @@ module xem6010_top 	(
 	//  LEDs
 	//------------------------------------------------------------------------
 	// Use LEDs as status display
-	assign led[0]			=			~sys_rst_sync;
-	assign led[1]			=			~init_calib_complete;
-	assign led[2]			=			~ram_underflow;
-	assign led[3]			=			~ram_overflow;
-	assign led[4]			=			~packet_cnt_full;
-	assign led[5]			=			~1'b0;
-	assign led[6]           =          ~1'b0;
-	assign led[7]           =          ~1'b0;
+	assign led[0]			=			~pad_fifo_overflow[0];
+	assign led[1]			=			~fifo_overflow[0][1];
+	assign led[2]			=			~ib_overflow;
+	assign led[3]			=			~ib_underflow;
+	assign led[4]			=			~ob_overflow;
+	assign led[5]			=			~ob_underflow;
+	assign led[6]           =          ~ram_overflow;
+	assign led[7]           =          ~ram_underflow;
 
     //------------------------------------------------------------------------
 	
@@ -789,7 +793,7 @@ module xem6010_top 	(
 				//-------------------------------------------------------------------------------
 				fifo_W1_R1   pad_fifo         (
                                                             .rst				    (fifo_clr[i]),
-                                                            .clk				    (tx_refclk_int),
+                                                            .clk					(tx_refclk_int),
                                                             .data_count				(pad_fifo_data_count[i]), // [11:0]
                                                             
                                                             .wr_en				    (tx_flagout[i]),
@@ -831,7 +835,7 @@ module xem6010_top 	(
                                             .full 				(fifo_full[i][0]),
                                             .overflow 			(fifo_overflow[i][0]),
                                             
-                                            .rd_clk 			(ti_clk),
+                                            .rd_clk				(sys_clk),
                                             .rd_en 				(~fifo_full[i][1]),
                                             .dout 				(pipeO_fifo_data_8b[i]),  // 8'bit out data
                                             .empty 				(fifo_empty[i][0]),
@@ -845,7 +849,7 @@ module xem6010_top 	(
             //-------------------------------------------------------------------------------
             fifo_W8_R32     fifo_1  (
 									.rst            (fifo_clr[i]),
-									.clk            (ti_clk),
+									.clk            (sys_clk),
 									
 									.wr_en        (fifo_valid[i][0]),
 									.din            (pipeO_fifo_data_8b[i]),
@@ -877,7 +881,7 @@ module xem6010_top 	(
                                     .CHIP_COUNTER_WIDTH   							(5))
         MasterPipeControllerUnit(   
                                     .rst                							(rst),
-                                    .clk             								(ti_clk),
+                                    .clk             								(sys_clk),
                                     .master_pipe_read	  							(~ib_full),
                                     .master_pipe_data	  							(master_pipe_controller_data),
                                     .word_count         							(sw_in_stream_signals),
@@ -894,15 +898,14 @@ module xem6010_top 	(
     //-------------------------------------------------------------------------------
 	fifo_W32_R128 ddr3_ib 	(
 							.rst													(|fifo_clr),
+							.clk													(sys_clk),
 							
-							.wr_clk													(ti_clk),
 							.wr_en													(master_pipe_controller_valid),
 							.din													(master_pipe_controller_data),
 							.full													(ib_full),
 							.overflow												(ib_overflow),
 							.wr_data_count											(ib_wr_data_count), // [9:0]
 							
-							.rd_clk													(sys_clk),
 							.rd_en													(ib_rd_en),
 							.dout													(ib_dout_128b),
 							.empty													(ib_empty),
@@ -1167,43 +1170,7 @@ module xem6010_top 	(
 												.dest_clk								(tx_refclk_int),
 												.src_sig									(block_next_streamout_refclk_domain),
 												.dest_sig								(block_next_streamout_ticlk_domain)
-						);					
-
-
-    
-    //------------------------------------------------------------------------
-    //  Clock running verification
-    //------------------------------------------------------------------------
-    always @(posedge refclk_int or posedge rst) begin
-        if (rst) begin
-            verify_refclk_running <= 1'b0;
-        end else begin
-            verify_refclk_running <= ~verify_refclk_running;
-        end
-    end
-    always @(posedge tx_refclk_int or posedge rst) begin
-        if (rst) begin
-            verify_tx_refclk_running <= 1'b0;
-        end else begin
-            verify_tx_refclk_running <= ~verify_tx_refclk_running;
-        end
-    end
-
-    always @(posedge s_clk_p_muxed or posedge rst) begin
-        if (rst) begin
-            verify_scan_clk_p_running <= 1'b0;
-        end else begin
-            verify_scan_clk_p_running <= ~verify_scan_clk_p_running;
-        end
-    end
-
-    always @(posedge s_clk_n_muxed or posedge rst) begin
-        if (rst) begin
-            verify_scan_clk_n_running <= 1'b0;
-        end else begin
-            verify_scan_clk_n_running <= ~verify_scan_clk_n_running;
-        end
-    end
+						);				
 
 
 
