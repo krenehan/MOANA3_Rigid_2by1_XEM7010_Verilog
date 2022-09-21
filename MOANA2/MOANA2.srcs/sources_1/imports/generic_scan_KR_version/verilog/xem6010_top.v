@@ -85,6 +85,7 @@ module xem6010_top 	(
 	localparam 	ADDR_WIREOUT_FIFOSIZE 								= 			8'h27;																			// Max number of words in backend FIFO
 	localparam	ADDR_WIREOUT_FCSTATE								=			8'h28;																			// Wire out for frame controller state
     localparam ADDR_WIREOUT_RAM_FIRST_ERROR = 8'h29;
+    localparam ADDR_WIREOUT_RAM_READ = 8'h30;
     localparam  	ADDR_TRIGGERIN_DATASTREAMREADACK 		=      	8'h40;																			// Trigger in for enabling data stream
     localparam  	ADDR_TRIGGEROUT_DATASTREAMREAD 		=			8'h60;																			// Trigger out for data readout during streaming mode
     localparam  	ADDR_PIPEIN_SCAN 										=			8'h80;																			// Pipe in for scan
@@ -142,7 +143,8 @@ module xem6010_top 	(
 	wire		[OKWIDTH-1:0]											cmd_fsm_state;     																				// Error message register for Scan Interface
 	wire		[OKWIDTH-1:0]											msg_stat;     																						// Status Bits for observation & outputs
 	wire		[OKWIDTH-1:0]											fifo_stat;																								// FIFO status bits
-	wire		[OKWIDTH-1:0]											sw_trigger_out;
+	wire		[OKWIDTH-1:0]											sw_datastreamread_trigger_out;
+	wire		[OKWIDTH-1:0]											sw_out_ram_read;
 	wire		[OKWIDTH-1:0]											sw_trigger_in;
 
 	//------------------------------------------------------------------------
@@ -326,6 +328,7 @@ module xem6010_top 	(
 	wire  														ob_underflow;
 	wire		[10:0]											ob_rd_data_count;
 	wire 		[7:0] 											ob_wr_data_count;
+	wire														urgent_wr_req;
 
 	// FIFO to Computer Pipe
 	wire		[OKWIDTH-1:0]									pipeO_fifo_data_16b;
@@ -454,9 +457,9 @@ module xem6010_top 	(
 	assign led[0]			=			~pad_fifo_overflow[0];
 	assign led[1]			=			~fifo_overflow[0][1];
 	assign led[2]			=			~ib_overflow;
-	assign led[3]			=			~ib_underflow;
+	assign led[3]			=			~ob_underflow;
 	assign led[4]			=			~ob_overflow;
-	assign led[5]			=			~ob_underflow;
+	assign led[5]			=			~urgent_wr_req;
 	assign led[6]           =          ~ram_overflow;
 	assign led[7]           =          ~ram_underflow;
 
@@ -522,10 +525,13 @@ module xem6010_top 	(
     assign sw_out_signals[14]=			1'b0;
     assign sw_out_signals[15]=			1'b0;
     
-    assign sw_trigger_out[0]=           read_trigger;
-    assign sw_trigger_out[1]=			ram_transfer_ready;
+    assign sw_datastreamread_trigger_out[0]=           read_trigger;
+    assign sw_datastreamread_trigger_out[15:1] = 15'b0;
+    
+    assign sw_out_ram_read[0]=			ram_transfer_ready;
+    assign sw_out_ram_read[15:1] = 		15'b0;
 	 
-	 assign read_ack_trigger = 			 sw_trigger_in[0];
+	 assign read_ack_trigger = 			sw_trigger_in[0];
     
 	//------------------------------------------------------------------------
     //  Board control signals
@@ -675,8 +681,8 @@ module xem6010_top 	(
     //------------------------------------------------------------------------
      
      // WireOR for switching bus inputs into okHost
-	wire [14*17-1:0]  ok2x;
-	okWireOR # (.N(14)) wireOR (ok2, ok2x);
+	wire [15*17-1:0]  ok2x;
+	okWireOR # (.N(15)) wireOR (ok2, ok2x);
     
     // Wire In: Valid Address Range:  0x00-0x1F
     okWireIn ep00(.ok1(ok1), .ep_addr(ADDR_WIREIN_MSGCTRL), .ep_dataout(msg_ctrl));
@@ -702,20 +708,21 @@ module xem6010_top 	(
 	okWireOut ep29 (.ok1(ok1), .ok2(ok2x[ 6*17 +: 17 ]), .ep_addr(ADDR_WIREOUT_FIFOSIZE), .ep_datain(16'd32767));
 	okWireOut ep30 (.ok1(ok1), .ok2(ok2x[ 7*17 +: 17 ]), .ep_addr(ADDR_WIREOUT_FCSTATE), .ep_datain( {6'b0, fc_state} ));
 	okWireOut ep31 (.ok1(ok1), .ok2(ok2x[ 8*17 +: 17 ]), .ep_addr(ADDR_WIREOUT_RAM_FIRST_ERROR), .ep_datain( sw_out_ram_first_error));
+	okWireOut ep32 (.ok1(ok1), .ok2(ok2x[ 9*17 +: 17 ]), .ep_addr(ADDR_WIREOUT_RAM_READ), .ep_datain(sw_out_ram_read));
     
     // Trigger In: Valid Address Range (0x40 - 0x5F)
     okTriggerIn ep40 (.ok1(ok1), .ep_addr(ADDR_TRIGGERIN_DATASTREAMREADACK), .ep_clk(refclk_int), .ep_trigger(sw_trigger_in));
     
     // Trigger Out: Valid Address Range (0x60-0x7F)
-    okTriggerOut ep60 (.ok1(ok1), .ok2(ok2x[ 9*17 +: 17 ]), .ep_addr(ADDR_TRIGGEROUT_DATASTREAMREAD), .ep_clk(refclk_int), .ep_trigger(sw_trigger_out));
+    okTriggerOut ep60 (.ok1(ok1), .ok2(ok2x[ 10*17 +: 17 ]), .ep_addr(ADDR_TRIGGEROUT_DATASTREAMREAD), .ep_clk(refclk_int), .ep_trigger(sw_datastreamread_trigger_out));
 
     // Pipe In: Valid Address Range:  0x80-0x9F
-    okPipeIn ep80 (.ok1(ok1), .ok2(ok2x[ 10*17 +: 17 ]), .ep_addr(ADDR_PIPEIN_SCAN), .ep_write(pipeI_write), .ep_dataout(pipeI_data));
-    okPipeIn ep81 (.ok1(ok1), .ok2(ok2x[ 11*17 +: 17 ]), .ep_addr(ADDR_PIPEIN_PATTERN), .ep_write(pipeI_emitter_pattern_write), .ep_dataout(pipeI_emitter_pattern_data));
+    okPipeIn ep80 (.ok1(ok1), .ok2(ok2x[ 11*17 +: 17 ]), .ep_addr(ADDR_PIPEIN_SCAN), .ep_write(pipeI_write), .ep_dataout(pipeI_data));
+    okPipeIn ep81 (.ok1(ok1), .ok2(ok2x[ 12*17 +: 17 ]), .ep_addr(ADDR_PIPEIN_PATTERN), .ep_write(pipeI_emitter_pattern_write), .ep_dataout(pipeI_emitter_pattern_data));
 
     // Pipe Out: Valid Address Range:  0xA0-0xBF
-    okPipeOut epA0 (.ok1(ok1), .ok2(ok2x[ 12*17 +: 17 ]), .ep_addr(ADDR_PIPEOUT_SCAN),.ep_read(pipeO_read), .ep_datain(pipeO_data));
-	okPipeOut epB0 (.ok1(ok1), .ok2(ok2x[ 13*17 +: 17 ]), .ep_addr(ADDR_PIPEOUT_FIFO_MASTER), .ep_read(pipeO_master_read), .ep_datain(pipeO_fifo_data_16b_shuffled));
+    okPipeOut epA0 (.ok1(ok1), .ok2(ok2x[ 13*17 +: 17 ]), .ep_addr(ADDR_PIPEOUT_SCAN),.ep_read(pipeO_read), .ep_datain(pipeO_data));
+	okPipeOut epB0 (.ok1(ok1), .ok2(ok2x[ 14*17 +: 17 ]), .ep_addr(ADDR_PIPEOUT_FIFO_MASTER), .ep_read(pipeO_master_read), .ep_datain(pipeO_fifo_data_16b_shuffled));
     
 
     //-------------------------------------------------------------------------------
@@ -919,43 +926,45 @@ module xem6010_top 	(
     //  DRAM Read and Write Controller
     //-------------------------------------------------------------------------------
 	mem_arbiter ddr3_arb(
-							.clk                (sys_clk),
-							.reset              (rst),
-							.calib_done         (init_calib_complete),
+							.clk                		(sys_clk),
+							.reset              		(rst),
+							.calib_done         		(init_calib_complete),
 							
-							.ib_re              (ib_rd_en),
-							.ib_data            (ib_dout_128b),
-							.ib_count           (ib_rd_data_count),
-							.ib_valid           (ib_valid),
-							.ib_empty           (ib_empty),
+							.ib_re              		(ib_rd_en),
+							.ib_data            		(ib_dout_128b),
+							.ib_count           		(ib_rd_data_count),
+							.ib_valid           		(ib_valid),
+							.ib_empty           		(ib_empty),
 							
-							.ob_we              (ob_wr_en),
-							.ob_data            (ob_din_128b),
-							.ob_count           (ob_wr_data_count),
-							.ob_full            (ob_full),
+							.ob_we              		(ob_wr_en),
+							.ob_data            		(ob_din_128b),
+							.ob_count           		(ob_wr_data_count),
+							.ob_full            		(ob_full),
 							
-							.app_rdy            (app_rdy),
-							.app_en             (app_en),
-							.app_cmd            (app_cmd),
-							.app_addr           (app_addr),
+							.app_rdy            		(app_rdy),
+							.app_en             		(app_en),
+							.app_cmd            		(app_cmd),
+							.app_addr           		(app_addr),
 							
-							.app_rd_data        (app_rd_data),
-							.app_rd_data_end    (app_rd_data_end),
-							.app_rd_data_valid  (app_rd_data_valid),
+							.app_rd_data        		(app_rd_data),
+							.app_rd_data_end    		(app_rd_data_end),
+							.app_rd_data_valid  		(app_rd_data_valid),
 							
-							.app_wdf_rdy        (app_wdf_rdy),
-							.app_wdf_wren       (app_wdf_wren),
-							.app_wdf_data       (app_wdf_data),
-							.app_wdf_end        (app_wdf_end),
-							.app_wdf_mask       (app_wdf_mask), 
+							.app_wdf_rdy        		(app_wdf_rdy),
+							.app_wdf_wren       		(app_wdf_wren),
+							.app_wdf_data       		(app_wdf_data),
+							.app_wdf_end        		(app_wdf_end),
+							.app_wdf_mask       		(app_wdf_mask), 
 							
-							.packets_in_transfer(packets_in_transfer),
-							.underflow			(ram_underflow),
-							.overflow			(ram_overflow),
-							.packet_cnt_full	(packet_cnt_full),
-							.error				(ram_error),
-							.first_error		(sw_out_ram_first_error), 
-							.transfer_ready		(ram_transfer_ready)
+							.packets_in_transfer		(packets_in_transfer),
+							.underflow					(ram_underflow),
+							.overflow					(ram_overflow),
+							.packet_cnt_full			(packet_cnt_full),
+							.error						(ram_error),
+							.first_error				(sw_out_ram_first_error), 
+							.transfer_ready				(ram_transfer_ready),
+							
+							.urgent_wr_req				(urgent_wr_req)
 	
 	);
 	
