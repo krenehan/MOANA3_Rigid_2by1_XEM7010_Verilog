@@ -8,6 +8,9 @@ module mem_arbiter
 		
 		parameter OBCNT_WIDTH		= 8,
 		parameter OB_NEAR_EMPTY		= 8'd15,
+		parameter OB_PACKETS		= 8'd225,
+		
+		
 		parameter WRITES_IN_PACKET 	= 8'd75,
 		
 		// Do not modify
@@ -65,7 +68,9 @@ module mem_arbiter
 		output wire			 			overflow,
 		output wire						packet_cnt_full,
 		output wire [OKWIDTH-1:0] 	 	error,
-		output wire	[OKWIDTH-1:0]	 	first_error
+		output wire	[OKWIDTH-1:0]	 	first_error,
+		
+		output wire 					urgent_wr_req
 		
 	);
 
@@ -108,7 +113,6 @@ module mem_arbiter
 	// Read and write requests
 	wire		rd_req;
 	wire		wr_req;
-	wire		urgent_wr_req;
 	wire		ib_near_full;
 	wire		ob_near_empty;
 	
@@ -150,18 +154,15 @@ module mem_arbiter
 	assign urgent_wr_req = ib_near_full & ~ob_near_empty;
 	
 	// If there is data in RAM and the output buffer does not contain a full packet of data, assert read request
-	assign rd_req = ~(packet_cnt_empty | packet_cnt_empty_next_cycle) && (ob_count < WRITES_IN_PACKET) && rdy_next_rd;
+	assign rd_req = ~(packet_cnt_empty | packet_cnt_empty_next_cycle) && (ob_count < OB_PACKETS) && rdy_next_rd;
 	
 	// Input buffer and output buffer conditionals
 	assign ib_near_full = (ib_count >= IB_NEAR_FULL);
 	assign ob_near_empty = (ob_count <= OB_NEAR_EMPTY);
 	
 	// Very primitive transfer ready
-	// The idea here is that this signal will connect to a wire or trigger at the top level and cause a read operation to be initiated
-	// Over the course of the transfer, the operation of transfer ready is undefined, as it depends on the flow of data into/out of the memory
-	// The read process must be continued until a transfer is collected before considering the transfer_ready signal
+	// This signal can be connected to an okWireOut endpoint at the top level and polled to determine when data is available for pipe out
 	assign transfer_ready = packet_cnt >= packets_in_transfer;
-	
 	
 	//------------------------------------------------------------------------
 	// Main Controller
