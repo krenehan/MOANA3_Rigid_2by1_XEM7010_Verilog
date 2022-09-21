@@ -31,9 +31,7 @@ module mem_arbiter_safety
 			   S_WRITE_1 	= 11,
 			   S_WRITE_2 	= 12,
 			   S_WRITE_3	= 13,
-			   S_READ_0  	= 20,
-			   S_READ_1  	= 21,
-			   S_READ_2  	= 22;
+			   S_READ_0  	= 20;
 	
 	// Error codes		   
 	localparam 	E_NONE					= 16'd0,
@@ -87,7 +85,7 @@ module mem_arbiter_safety
 			first_read_initiated <= 1'b0;
 		end else begin
 			first_read_initiated <= first_read_initiated;
-			if (state == S_READ_1) first_read_initiated <= 1'b1;
+			if (state == S_READ_0) first_read_initiated <= 1'b1;
 		end
 	end
 	
@@ -100,7 +98,7 @@ module mem_arbiter_safety
 		if (reset) begin
 			wr_addr_flipped <= 1'b0;
 		end else if (first_write_initiated) begin
-			if (wr_addr_msb_prev & ~wr_addr[28]) begin
+			if (wr_addr_msb_prev & ~wr_addr[ADDR_WIDTH-1]) begin
 				wr_addr_flipped <= 1'b1;
 			end else begin
 				wr_addr_flipped <= 1'b0;
@@ -117,7 +115,7 @@ module mem_arbiter_safety
 		if (reset) begin
 			rd_addr_flipped <= 1'b0;
 		end else if (first_read_initiated) begin
-			if (rd_addr_msb_prev & ~rd_addr[28]) begin
+			if (rd_addr_msb_prev & ~rd_addr[ADDR_WIDTH-1]) begin
 				rd_addr_flipped <= 1'b1;
 			end else begin
 				rd_addr_flipped <= 1'b0;
