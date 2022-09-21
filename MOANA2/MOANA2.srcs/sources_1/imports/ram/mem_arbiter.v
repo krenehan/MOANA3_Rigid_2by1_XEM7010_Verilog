@@ -81,9 +81,7 @@ module mem_arbiter
 			   S_WRITE_1 	= 11,
 			   S_WRITE_2 	= 12,
 			   S_WRITE_3	= 13,
-			   S_READ_0  	= 20,
-			   S_READ_1  	= 21,
-			   S_READ_2  	= 22;
+			   S_READ_0  	= 20;
 			   
 	// Commands
 	localparam 	CMD_WRITE 	= 3'd0,
@@ -121,11 +119,14 @@ module mem_arbiter
 	wire		dec_packet_cnt;
 	wire		packet_cnt_empty;
 	wire		packet_cnt_empty_next_cycle;
+	reg			ob_we_flag;
+	reg			ob_we_once_valid;
+	wire		rdy_next_rd;
 	
 	// Status signals
 	reg 		fifo_data_not_valid;
 	reg			rd_data_not_valid;
-	wire 		reading = (state==S_READ_0) | (state==S_READ_1) | (state==S_READ_2);
+	wire 		reading = (state==S_READ_0);
 	wire 		writing = (state==S_WRITE_0) | (state==S_WRITE_1) | (state==S_WRITE_2);
 
 	// Mask is unused
@@ -139,6 +140,9 @@ module mem_arbiter
 	// Assignments
 	//------------------------------------------------------------------------
 	
+	// The next read operation only begins if the last read operation has been handled by the read controller
+	assign rdy_next_rd = ~(ob_we_once_valid | ob_we_flag);
+	
 	// If the input buffer has data, assert write request
 	assign wr_req = ~ib_empty;
 	
@@ -146,7 +150,7 @@ module mem_arbiter
 	assign urgent_wr_req = ib_near_full & ~ob_near_empty;
 	
 	// If there is data in RAM and the output buffer does not contain a full packet of data, assert read request
-	assign rd_req = ~(packet_cnt_empty | packet_cnt_empty_next_cycle) && (ob_count < WRITES_IN_PACKET);
+	assign rd_req = ~(packet_cnt_empty | packet_cnt_empty_next_cycle) && (ob_count < WRITES_IN_PACKET) && rdy_next_rd;
 	
 	// Input buffer and output buffer conditionals
 	assign ib_near_full = (ib_count >= IB_NEAR_FULL);
@@ -160,19 +164,23 @@ module mem_arbiter
 	
 	
 	//------------------------------------------------------------------------
-	// State Machine
+	// Main Controller
 	//------------------------------------------------------------------------
 	always @(posedge clk) begin
 	
 		if (reset_d) begin
 			state             <= S_CALIB_WAIT;
 			cmd_byte_addr_wr  <= 28'b0;
-			cmd_byte_addr_rd  <= 28'b0;
 			app_en            <= 1'b0;
 			app_cmd           <= 3'b0;
 			app_addr          <= 28'b0;
 			app_wdf_wren      <= 1'b0;
 			app_wdf_end       <= 1'b0;
+			ib_re			  <= 1'b0;
+			fifo_data_not_valid <= 1'b0;
+			inc_read_cnt		<= 1'b0;
+			inc_write_cnt		<= 1'b0;
+			ob_we_flag			<= 1'b0;
 			
 		end else begin
 		
@@ -181,11 +189,10 @@ module mem_arbiter
 			app_wdf_wren      	<= 1'b0;
 			app_wdf_end       	<= 1'b0;
 			ib_re             	<= 1'b0;
-			ob_we             	<= 1'b0;
 			fifo_data_not_valid <= 1'b0;
-			rd_data_not_valid 	<= 1'b0;
-			inc_write_cnt		<= 1'b0;
 			inc_read_cnt		<= 1'b0;
+			inc_write_cnt		<= 1'b0;
+			ob_we_flag 			<= 1'b0;
 	
 	
 			case (state)
@@ -268,41 +275,58 @@ module mem_arbiter
 						app_cmd <= CMD_WRITE;
 					end
 				end
-	
-				
-				// Read command
-				S_READ_0: begin
-					app_en    <= 1'b1;
-					app_cmd <= CMD_READ;
-					state <= S_READ_1;
-				end
 				
 				
 				// Confirm command accepted or repeat command
-				S_READ_1: begin
+				S_READ_0: begin
 					if (app_rdy == 1'b1) begin
-						cmd_byte_addr_rd <= cmd_byte_addr_rd + ADDRESS_INCREMENT;
-						state <= S_READ_2;
+						ob_we_flag <= 1'b1;
 						inc_read_cnt <= 1'b1; // Read must complete, safe to increment read counter here
+						state <= S_IDLE;
 					end else begin
 						app_en    <= 1'b1;
 						app_cmd <= CMD_READ;
 					end
 				end
-	
-				
-				// Confirm data is valid and push to output buffer
-				S_READ_2: begin
-					if (app_rd_data_valid == 1'b1) begin
-						ob_data <= app_rd_data;
-						ob_we <= 1'b1;
-						state <= S_IDLE;
-					end else begin
-						rd_data_not_valid <= 1'b1;
-					end
-				end
 				
 			endcase
+		end
+	end
+	
+	//------------------------------------------------------------------------
+	// Read controller
+	// It takes ~20 cycles for the read data from RAM to be valid, so we'd rather not stall the main controller while we wait
+	// Read controller monitors ob_we_flag and handles assertion of ob_we when rd_data becomes valid so that main controller is not stalled
+	//------------------------------------------------------------------------
+	always @(posedge clk) begin
+		if (reset_d) begin
+			ob_we <= 1'b0;
+			ob_we_once_valid <= 1'b0;
+			ob_data <= 0;
+			rd_data_not_valid <= 1'b0;
+			cmd_byte_addr_rd  <= 28'b0;
+		end else begin
+		
+			// Default
+			ob_we <= 1'b0;
+			rd_data_not_valid <= 1'b0;
+			
+			// Write enable flag persists for a single cycle
+			// Trigger the controller to wait for a valid signal
+			if (ob_we_flag == 1'b1) ob_we_once_valid <= 1'b1;
+			
+			// If ob_we_once_valid is high and the read data is valid, write proceeds
+			// ob_we_once_valid is deasserted after a single cycle
+			if ((ob_we_once_valid == 1'b1) || (ob_we_flag == 1'b1)) begin
+				if (app_rd_data_valid == 1'b1) begin
+					ob_data <= app_rd_data;
+					ob_we <= 1'b1;
+					cmd_byte_addr_rd <= cmd_byte_addr_rd + ADDRESS_INCREMENT;
+					ob_we_once_valid <= 1'b0;
+				end else begin
+					rd_data_not_valid <= 1'b1;
+				end
+			end
 		end
 	end
 	
@@ -381,6 +405,10 @@ module mem_arbiter
 		begin
 			// Load read address
 			app_addr <= {1'b0, cmd_byte_addr_rd};						
+
+			// Send read command
+			app_en    <= 1'b1;
+			app_cmd <= CMD_READ;
 			
 			// Move state
 			state <= S_READ_0;
