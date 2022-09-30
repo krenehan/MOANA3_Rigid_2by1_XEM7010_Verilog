@@ -29,8 +29,6 @@ module mem_arbiter_safety
 	           S_CALIB_WAIT = 1,
 			   S_WRITE_0 	= 10,
 			   S_WRITE_1 	= 11,
-			   S_WRITE_2 	= 12,
-			   S_WRITE_3	= 13,
 			   S_READ_0  	= 20;
 	
 	// Error codes		   
@@ -71,7 +69,7 @@ module mem_arbiter_safety
 			first_write_initiated <= 1'b0;
 		end else begin
 			first_write_initiated <= first_write_initiated;
-			if (state == S_WRITE_2) first_write_initiated <= 1'b1;
+			if (state == S_WRITE_0) first_write_initiated <= 1'b1;
 		end
 	end
 	

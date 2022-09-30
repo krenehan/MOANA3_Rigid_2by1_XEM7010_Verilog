@@ -84,8 +84,6 @@ module mem_arbiter
 	           S_CALIB_WAIT = 1,
 			   S_WRITE_0 	= 10,
 			   S_WRITE_1 	= 11,
-			   S_WRITE_2 	= 12,
-			   S_WRITE_3	= 13,
 			   S_READ_0  	= 20;
 			   
 	// Commands
@@ -131,7 +129,7 @@ module mem_arbiter
 	reg 		fifo_data_not_valid;
 	reg			rd_data_not_valid;
 	wire 		reading = (state==S_READ_0);
-	wire 		writing = (state==S_WRITE_0) | (state==S_WRITE_1) | (state==S_WRITE_2);
+	wire 		writing = (state==S_WRITE_0) | (state==S_WRITE_1);
 
 	// Mask is unused
 	assign app_wdf_mask = 16'h0000;
@@ -215,34 +213,9 @@ module mem_arbiter
 					else if	(wr_req)		init_write;	// 3th priority - Read from input buffer
 
 				end
-				
-				// FIFOs are not FWFT, so wait a cycle for data valid
-				S_WRITE_0: begin
-					state <= S_WRITE_1;
-				end
-	
-				// Check that data from input buffer is valid
-				S_WRITE_1: begin
-					if (ib_valid==1) begin
-					
-						// Load data into MIG
-						app_wdf_data <= ib_data;
-						
-						// Proceed to next write state
-						state <= S_WRITE_2;
-						
-					end else begin
-					
-						// Status flag
-						fifo_data_not_valid <= 1'b1;
-					
-						// Move back to IDLE state if data is not valid in this cycle
-						state <= S_IDLE;
-					end
-				end
 	
 				// Write command
-				S_WRITE_2: begin
+				S_WRITE_0: begin
 				
 					// Write enable
 					app_wdf_wren <= 1'b1;
@@ -255,12 +228,12 @@ module mem_arbiter
 						app_en    <= 1'b1;
 						app_cmd <= CMD_WRITE;
 						inc_write_cnt <= 1'b1;
-						state <= S_WRITE_3;
+						state <= S_WRITE_1;
 					end
 				end
 	
 				// Confirm command accepted
-				S_WRITE_3: begin
+				S_WRITE_1: begin
 					if (app_rdy == 1'b1) begin
 					
 						// Increment write address
@@ -424,6 +397,9 @@ module mem_arbiter
 		begin
 			// Load write address
 			app_addr <= {1'b0, cmd_byte_addr_wr};
+
+			// Load data into MIG
+			app_wdf_data <= ib_data;
 			
 			// Assert FIFO read enable
 			ib_re <= 1'b1;
