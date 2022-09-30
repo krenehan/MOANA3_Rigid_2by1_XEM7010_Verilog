@@ -151,9 +151,10 @@ endtask
 task check_transfer_ready;
 	begin
 		$display("TIME %0t: INFO: checking transfer ready", $time);
-		UpdateTriggerOuts;
-		if (IsTriggered(ADDR_TRIGGEROUT_DATASTREAMREAD, 16'b10) === 1) begin
-			$display("TIME %0t: INFO: transfer ready trigger detected", $time);
+		UpdateWireOuts;
+		ram_read_wire_out_register = GetWireOutValue(ADDR_WIREOUT_RAM_READ);
+		if ((ram_read_wire_out_register & SIGNAL_TRANSFER_READY) === 1) begin
+			$display("TIME %0t: INFO: transfer ready signal detected", $time);
 			transfer_ready = 1'b1;
 		end else begin
 			transfer_ready = 1'b0;
