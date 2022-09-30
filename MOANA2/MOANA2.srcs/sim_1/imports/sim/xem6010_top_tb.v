@@ -110,7 +110,7 @@
 module xem6010_top_tb;
 
 	// Options
-	localparam RANDOM_TEST_PATTERN = "False";
+	localparam RANDOM_TEST_PATTERN = "True";
 	
 	// Additional settings derived from options above
 	`ifdef SHORTEN_SIM
@@ -121,12 +121,12 @@ module xem6010_top_tb;
 
 	// TEST SETTINGS
 	localparam NUMBER_OF_CHIPS = 2;
-	localparam NUMBER_OF_CAPTURES = 10;
+	localparam NUMBER_OF_CAPTURES = 1;
 	localparam NUMBER_OF_FRAMES = 16'd1;
 	localparam PATTERNS_PER_FRAME = 16'd1;
 	localparam PACKETS_IN_TRANSFER = 16'd1; // Should equal frames * patterns
 	localparam PAD_CAPTURED_MASK = 16'b11;
-	localparam MEASUREMENTS_PER_PATTERN = 32'd15000;
+	localparam MEASUREMENTS_PER_PATTERN = 32'd50000;
 	localparam TEST_PATTERN_0 = 10'd5;
 	localparam TEST_PATTERN_1 = 10'd10;
     
@@ -152,8 +152,9 @@ module xem6010_top_tb;
     localparam  	ADDR_WIREOUT_EMITTERPATTERNMSB 			= 			8'h26;																			// Emitter pattern register bank MSB
 	localparam 	ADDR_WIREOUT_FIFOSIZE 								= 			8'h27;																			// Max number of words in backend FIFO
 	localparam	ADDR_WIREOUT_FCSTATE								=			8'h28;
+	localparam ADDR_WIREOUT_RAM_READ = 8'h30;
     localparam  	ADDR_TRIGGERIN_DATASTREAMREADACK 		=      	8'h40;																			// Trigger in for enabling data stream
-    localparam  	ADDR_TRIGGEROUT_DATASTREAMREAD 		=			8'h60;																			// Trigger out for data readout during streaming mode
+    localparam  	ADDR_TRIGGEROUT_DATASTREAMREAD 		=			8'h60;
     localparam  	ADDR_PIPEIN_SCAN 										=			8'h80;																			// Pipe in for scan
     localparam  	ADDR_PIPEIN_PATTERN 								=			8'h81;																			// Pipe in for pattern data
     localparam  	ADDR_PIPEOUT_SCAN 									=			8'ha0;																			// Pipe out for scan
@@ -193,6 +194,8 @@ module xem6010_top_tb;
     localparam SIGNAL_CAPTURE_RUNNING =        16'h0080;
     localparam SIGNAL_CAPTURE_DONE =           16'h0100;
     
+    // Software out ram read signals
+    localparam SIGNAL_TRANSFER_READY = 		   16'h0001;    
     
     
     localparam NUMBER_OF_BINS = 150;
@@ -255,6 +258,7 @@ module xem6010_top_tb;
 	wire [15:0] NO_MASK = 16'hffff;
 	reg [15:0] frame_controller_wire_in_register;
 	reg [15:0] ram_status_wire_out_register;
+	reg [15:0] ram_read_wire_out_register;
 	reg [15:0] power_wire_in_register;
 	reg [15:0] frame_controller_wire_out_register;
 	reg transfer_ready;
@@ -623,6 +627,7 @@ module xem6010_top_tb;
 		frame_controller_wire_in_register = 0;
 		power_wire_in_register = 0;
 		ram_status_wire_out_register = 0;
+		ram_read_wire_out_register = 0;
 		frame_controller_wire_out_register = 0;
 		force_dataout = 0;
 		transfer_ready = 0;
@@ -684,7 +689,7 @@ module xem6010_top_tb;
 			// Set FSM bypass
 			$display("TIME %0t: INFO: setting FSM bypass", $time);
 			tiehi_fc_signal(SIGNAL_FSM_BYPASS);
-			#(5000000);
+			#(2000000);
 			
 		`endif
 		
