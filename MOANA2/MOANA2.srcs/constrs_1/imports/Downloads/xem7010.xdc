@@ -55,8 +55,9 @@ set_property IOSTANDARD LVCMOS33 [get_ports {hi_inout[*]}]
 set_property PACKAGE_PIN V22 [get_ports {hi_aa}]
 set_property IOSTANDARD LVCMOS33 [get_ports {hi_aa}]
 
+
 ############################################################################
-## clocking constraints
+## Opal Kelly Clocking Constraints
 ############################################################################
 create_clock -name okHostClk -period 20.83 [get_ports {hi_in[0]}]
 
@@ -72,24 +73,17 @@ set_output_delay -add_delay -clock [get_clocks {okHostClk}]  8.900 [get_ports {h
 
 set_output_delay -add_delay -clock [get_clocks {okHostClk}]  9.200 [get_ports {hi_inout[*]}]
 
-
 set_property IOSTANDARD LVDS_25 [get_ports {sys_clk_p}]
 set_property IOSTANDARD LVDS_25 [get_ports {sys_clk_n}]
 set_property PACKAGE_PIN K4 [get_ports {sys_clk_p}]
 set_property PACKAGE_PIN J4 [get_ports {sys_clk_n}]
 
-# Constrain clock outputs
-#create_clock -name tx_ref_clk_out -period 40.0 -waveform {0 20} [get_ports {MC1[23]}] 
-#create_clock -name ref_clk_out -period 20.0 -waveform {0 10} [get_ports {MC1[20]}] 
 
-# Constrain system clock
-create_clock -name sys_clk -period 5.0 -waveform {0 2.5} [get_pins {clock_buff/O}]
-
+############################################################################
+## User Clocking Constraints
+############################################################################
 # Create refclks
-#create_clock -name ref_clk_25MHz -period 40.0 -waveform {0 20} [get_nets ref_clk_mmcm[0]]
-#create_clock -name ref_clk_50MHz -period 20.0 -waveform {0 10} [get_nets ref_clk_mmcm[1]]
-#create_clock -name ref_clk_100MHz -period 10.0 -waveform {0 5} [get_nets ref_clk_mmcm[2]]
-create_generated_clock -name ref_clk_pll -source [get_clocks clk_100MHz_clk_wiz_0] -divide_by 1 [get_pins ref_clk_pll]
+create_generated_clock -name ref_clk_pll -source [get_clocks clk_100MHz_clk_wiz_0] -divide_by 1 [get_nets ref_clk_pll]
 
 # Constrain scan clocks
 create_clock -name scan_clk_p -period 100.0 -waveform {0 25} [get_nets {fpga_ctrl/scan_ctrl/scan_clkp_reg_reg[3][0]}]
@@ -100,10 +94,9 @@ set ref_clk_25MHz_domain [list [get_clocks clk_25MHz_clk_wiz_0]]
 set ref_clk_50MHz_domain [list [get_clocks clk_50MHz_clk_wiz_0]]
 set ref_clk_100MHz_domain [list [get_clocks clk_100MHz_clk_wiz_0] [get_clocks ref_clk_pll]]
 set tx_ref_clk_domain [list [get_clocks tx_refclk_mmcm_clk_wiz_0]]
-#set ref_clk_out_domain [list [get_clocks ref_clk_out]
-#set tx_ref_clk_out_domain [list [get_clocks tx_ref_clk_out]
 set scan_clk_domain [list [get_clocks scan_clk_p] [get_clocks scan_clk_n]]
 set ti_clk_domain [list [get_clocks mmcm0_clk0]]
+set ram_clk_domain [list [get_clocks sys_clk]]
 
 # Asynchronous clocks
 set_clock_groups -name async_refclk25_refclk50 -asynchronous -group $ref_clk_25MHz_domain -group $ref_clk_50MHz_domain
@@ -126,6 +119,17 @@ set_clock_groups -name async_txrefclk_scanclk -asynchronous -group $tx_ref_clk_d
 set_clock_groups -name async_txrefclk_ticlk -asynchronous -group $tx_ref_clk_domain -group $ti_clk_domain
 set_clock_groups -name async_scanclk_ticlk -asynchronous -group $scan_clk_domain -group $ti_clk_domain
 
+set_clock_groups -name async_ramclk_refclk25 -asynchronous -group $ram_clk_domain -group $ref_clk_25MHz_domain 
+set_clock_groups -name async_ramclk_refclk50 -asynchronous -group $ram_clk_domain -group $ref_clk_50MHz_domain
+set_clock_groups -name async_ramclk_refclk100 -asynchronous -group $ram_clk_domain -group $ref_clk_100MHz_domain
+set_clock_groups -name async_ramclk_scanclk -asynchronous -group $ram_clk_domain -group $scan_clk_domain
+set_clock_groups -name async_ramclk_ticlk -asynchronous -group $ram_clk_domain -group $ti_clk_domain
+
+
+
+############################################################################
+## IO constraints
+############################################################################
 # MC2-47 
 set_property PACKAGE_PIN J17 [get_ports {MC1[11]}]
 set_property IOSTANDARD LVCMOS18 [get_ports {MC1[11]}]
@@ -227,87 +231,87 @@ set_property IOSTANDARD LVCMOS33 [get_ports {led[*]}]
 #set_property IOSTANDARD LVCMOS33 [get_ports {spi_dout}]
 
 # DRAM #####################################################################
-#set_property PACKAGE_PIN AB1 [get_ports {ddr3_dq[0]}]
-#set_property PACKAGE_PIN Y4  [get_ports {ddr3_dq[1]}]
-#set_property PACKAGE_PIN AB2 [get_ports {ddr3_dq[2]}]
-#set_property PACKAGE_PIN V4  [get_ports {ddr3_dq[3]}]
-#set_property PACKAGE_PIN AB5 [get_ports {ddr3_dq[4]}]
-#set_property PACKAGE_PIN AA5 [get_ports {ddr3_dq[5]}]
-#set_property PACKAGE_PIN AB3 [get_ports {ddr3_dq[6]}]
-#set_property PACKAGE_PIN AA4 [get_ports {ddr3_dq[7]}]
-#set_property PACKAGE_PIN U3  [get_ports {ddr3_dq[8]}]
-#set_property PACKAGE_PIN W2  [get_ports {ddr3_dq[9]}]
-#set_property PACKAGE_PIN U2  [get_ports {ddr3_dq[10]}]
-#set_property PACKAGE_PIN Y2  [get_ports {ddr3_dq[11]}]
-#set_property PACKAGE_PIN U1  [get_ports {ddr3_dq[12]}]
-#set_property PACKAGE_PIN Y1  [get_ports {ddr3_dq[13]}]
-#set_property PACKAGE_PIN T1  [get_ports {ddr3_dq[14]}]
-#set_property PACKAGE_PIN W1  [get_ports {ddr3_dq[15]}]
-#set_property SLEW FAST [get_ports {ddr3_dq[*]}]
-#set_property IOSTANDARD SSTL15 [get_ports {ddr3_dq[*]}]
+set_property PACKAGE_PIN AB1 [get_ports {ddr3_dq[0]}]
+set_property PACKAGE_PIN Y4  [get_ports {ddr3_dq[1]}]
+set_property PACKAGE_PIN AB2 [get_ports {ddr3_dq[2]}]
+set_property PACKAGE_PIN V4  [get_ports {ddr3_dq[3]}]
+set_property PACKAGE_PIN AB5 [get_ports {ddr3_dq[4]}]
+set_property PACKAGE_PIN AA5 [get_ports {ddr3_dq[5]}]
+set_property PACKAGE_PIN AB3 [get_ports {ddr3_dq[6]}]
+set_property PACKAGE_PIN AA4 [get_ports {ddr3_dq[7]}]
+set_property PACKAGE_PIN U3  [get_ports {ddr3_dq[8]}]
+set_property PACKAGE_PIN W2  [get_ports {ddr3_dq[9]}]
+set_property PACKAGE_PIN U2  [get_ports {ddr3_dq[10]}]
+set_property PACKAGE_PIN Y2  [get_ports {ddr3_dq[11]}]
+set_property PACKAGE_PIN U1  [get_ports {ddr3_dq[12]}]
+set_property PACKAGE_PIN Y1  [get_ports {ddr3_dq[13]}]
+set_property PACKAGE_PIN T1  [get_ports {ddr3_dq[14]}]
+set_property PACKAGE_PIN W1  [get_ports {ddr3_dq[15]}]
+set_property SLEW FAST [get_ports {ddr3_dq[*]}]
+set_property IOSTANDARD SSTL15 [get_ports {ddr3_dq[*]}]
 
-#set_property PACKAGE_PIN W6  [get_ports {ddr3_addr[0]}]
-#set_property PACKAGE_PIN U7  [get_ports {ddr3_addr[1]}]
-#set_property PACKAGE_PIN W7  [get_ports {ddr3_addr[2]}]
-#set_property PACKAGE_PIN Y6  [get_ports {ddr3_addr[3]}]
-#set_property PACKAGE_PIN U6  [get_ports {ddr3_addr[4]}]
-#set_property PACKAGE_PIN AB7 [get_ports {ddr3_addr[5]}]
-#set_property PACKAGE_PIN Y8  [get_ports {ddr3_addr[6]}]
-#set_property PACKAGE_PIN AB8 [get_ports {ddr3_addr[7]}]
-#set_property PACKAGE_PIN Y7  [get_ports {ddr3_addr[8]}]
-#set_property PACKAGE_PIN AA8 [get_ports {ddr3_addr[9]}]
-#set_property PACKAGE_PIN T4  [get_ports {ddr3_addr[10]}]
-#set_property PACKAGE_PIN V7  [get_ports {ddr3_addr[11]}]
-#set_property PACKAGE_PIN T6  [get_ports {ddr3_addr[12]}]
-#set_property PACKAGE_PIN Y9  [get_ports {ddr3_addr[13]}]
-#set_property PACKAGE_PIN W9  [get_ports {ddr3_addr[14]}]
-#set_property SLEW FAST [get_ports {ddr3_addr[*]}]
-#set_property IOSTANDARD SSTL15 [get_ports {ddr3_addr[*]}]
+set_property PACKAGE_PIN W6  [get_ports {ddr3_addr[0]}]
+set_property PACKAGE_PIN U7  [get_ports {ddr3_addr[1]}]
+set_property PACKAGE_PIN W7  [get_ports {ddr3_addr[2]}]
+set_property PACKAGE_PIN Y6  [get_ports {ddr3_addr[3]}]
+set_property PACKAGE_PIN U6  [get_ports {ddr3_addr[4]}]
+set_property PACKAGE_PIN AB7 [get_ports {ddr3_addr[5]}]
+set_property PACKAGE_PIN Y8  [get_ports {ddr3_addr[6]}]
+set_property PACKAGE_PIN AB8 [get_ports {ddr3_addr[7]}]
+set_property PACKAGE_PIN Y7  [get_ports {ddr3_addr[8]}]
+set_property PACKAGE_PIN AA8 [get_ports {ddr3_addr[9]}]
+set_property PACKAGE_PIN T4  [get_ports {ddr3_addr[10]}]
+set_property PACKAGE_PIN V7  [get_ports {ddr3_addr[11]}]
+set_property PACKAGE_PIN T6  [get_ports {ddr3_addr[12]}]
+set_property PACKAGE_PIN Y9  [get_ports {ddr3_addr[13]}]
+set_property PACKAGE_PIN W9  [get_ports {ddr3_addr[14]}]
+set_property SLEW FAST [get_ports {ddr3_addr[*]}]
+set_property IOSTANDARD SSTL15 [get_ports {ddr3_addr[*]}]
 
-#set_property PACKAGE_PIN AB6 [get_ports {ddr3_ba[0]}]
-#set_property PACKAGE_PIN R6  [get_ports {ddr3_ba[1]}]
-#set_property PACKAGE_PIN AA6 [get_ports {ddr3_ba[2]}]
-#set_property SLEW FAST [get_ports {ddr3_ba[*]}]
-#set_property IOSTANDARD SSTL15 [get_ports {ddr3_ba[*]}]
+set_property PACKAGE_PIN AB6 [get_ports {ddr3_ba[0]}]
+set_property PACKAGE_PIN R6  [get_ports {ddr3_ba[1]}]
+set_property PACKAGE_PIN AA6 [get_ports {ddr3_ba[2]}]
+set_property SLEW FAST [get_ports {ddr3_ba[*]}]
+set_property IOSTANDARD SSTL15 [get_ports {ddr3_ba[*]}]
 
-#set_property PACKAGE_PIN V5 [get_ports {ddr3_ras_n}]
-#set_property SLEW FAST [get_ports {ddr3_ras_n}]
-#set_property IOSTANDARD SSTL15 [get_ports {ddr3_ras_n}]
+set_property PACKAGE_PIN V5 [get_ports {ddr3_ras_n}]
+set_property SLEW FAST [get_ports {ddr3_ras_n}]
+set_property IOSTANDARD SSTL15 [get_ports {ddr3_ras_n}]
 
-#set_property PACKAGE_PIN U5 [get_ports {ddr3_cas_n}]
-#set_property SLEW FAST [get_ports {ddr3_cas_n}]
-#set_property IOSTANDARD SSTL15 [get_ports {ddr3_cas_n}]
+set_property PACKAGE_PIN U5 [get_ports {ddr3_cas_n}]
+set_property SLEW FAST [get_ports {ddr3_cas_n}]
+set_property IOSTANDARD SSTL15 [get_ports {ddr3_cas_n}]
 
-#set_property PACKAGE_PIN T5 [get_ports {ddr3_we_n}]
-#set_property SLEW FAST [get_ports {ddr3_we_n}]
-#set_property IOSTANDARD SSTL15 [get_ports {ddr3_we_n}]
+set_property PACKAGE_PIN T5 [get_ports {ddr3_we_n}]
+set_property SLEW FAST [get_ports {ddr3_we_n}]
+set_property IOSTANDARD SSTL15 [get_ports {ddr3_we_n}]
 
-#set_property PACKAGE_PIN T3 [get_ports {ddr3_reset_n}]
-#set_property SLEW FAST [get_ports {ddr3_reset_n}]
-#set_property IOSTANDARD LVCMOS15 [get_ports {ddr3_reset_n}]
+set_property PACKAGE_PIN T3 [get_ports {ddr3_reset_n}]
+set_property SLEW FAST [get_ports {ddr3_reset_n}]
+set_property IOSTANDARD LVCMOS15 [get_ports {ddr3_reset_n}]
 
-#set_property PACKAGE_PIN R4 [get_ports {ddr3_cke}]
-#set_property SLEW FAST [get_ports {ddr3_cke}]
-#set_property IOSTANDARD SSTL15 [get_ports {ddr3_cke}]
+set_property PACKAGE_PIN R4 [get_ports {ddr3_cke}]
+set_property SLEW FAST [get_ports {ddr3_cke}]
+set_property IOSTANDARD SSTL15 [get_ports {ddr3_cke}]
 
-#set_property PACKAGE_PIN W5 [get_ports {ddr3_odt[0]}]
-#set_property SLEW FAST [get_ports {ddr3_odt[0]}]
-#set_property IOSTANDARD SSTL15 [get_ports {ddr3_odt[0]}]
+set_property PACKAGE_PIN W5 [get_ports {ddr3_odt}]
+set_property SLEW FAST [get_ports {ddr3_odt}]
+set_property IOSTANDARD SSTL15 [get_ports {ddr3_odt}]
 
-#set_property PACKAGE_PIN AA1 [get_ports {ddr3_dm[0]}]
-#set_property PACKAGE_PIN V2  [get_ports {ddr3_dm[1]}]
-#set_property SLEW FAST [get_ports {ddr3_dm[*]}]
-#set_property IOSTANDARD SSTL15 [get_ports {ddr3_dm[*]}]
+set_property PACKAGE_PIN AA1 [get_ports {ddr3_dm[0]}]
+set_property PACKAGE_PIN V2  [get_ports {ddr3_dm[1]}]
+set_property SLEW FAST [get_ports {ddr3_dm[*]}]
+set_property IOSTANDARD SSTL15 [get_ports {ddr3_dm[*]}]
 
-#set_property PACKAGE_PIN Y3  [get_ports {ddr3_dqs_p[0]}]
-#set_property PACKAGE_PIN AA3 [get_ports {ddr3_dqs_n[0]}]
-#set_property PACKAGE_PIN R3  [get_ports {ddr3_dqs_p[1]}]
-#set_property PACKAGE_PIN R2  [get_ports {ddr3_dqs_n[1]}]
-#set_property SLEW FAST [get_ports {ddr3_dqs*}]
-#set_property IOSTANDARD DIFF_SSTL15 [get_ports {ddr3_dqs*}]
+set_property PACKAGE_PIN Y3  [get_ports {ddr3_dqs_p[0]}]
+set_property PACKAGE_PIN AA3 [get_ports {ddr3_dqs_n[0]}]
+set_property PACKAGE_PIN R3  [get_ports {ddr3_dqs_p[1]}]
+set_property PACKAGE_PIN R2  [get_ports {ddr3_dqs_n[1]}]
+set_property SLEW FAST [get_ports {ddr3_dqs*}]
+set_property IOSTANDARD DIFF_SSTL15 [get_ports {ddr3_dqs*}]
 
-#set_property PACKAGE_PIN V9 [get_ports {ddr3_ck_p[0]}]
-#set_property PACKAGE_PIN V8 [get_ports {ddr3_ck_n[0]}]
-#set_property SLEW FAST [get_ports {ddr3_ck*}]
-#set_property IOSTANDARD DIFF_SSTL15 [get_ports {ddr3_ck_*}]
+set_property PACKAGE_PIN V9 [get_ports {ddr3_ck_p}]
+set_property PACKAGE_PIN V8 [get_ports {ddr3_ck_n}]
+set_property SLEW FAST [get_ports {ddr3_ck*}]
+set_property IOSTANDARD DIFF_SSTL15 [get_ports {ddr3_ck_*}]
 

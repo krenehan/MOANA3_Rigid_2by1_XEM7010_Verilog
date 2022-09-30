@@ -148,13 +148,18 @@ module DigitalCore(
 	    VCSEL2_Anode, 
 	    
 	    ScanBitsRd, 
-	    ScanBitsWr
+	    ScanBitsWr, 
+	    
+	    test_pattern,
+	    force_dataout
 
     );
 
     //-----------------------------------------------------------------------------------
     //  Parameters
     //-----------------------------------------------------------------------------------
+    parameter OVERRIDE_DATAOUT = 				"False"; // Override DataTx mechanism so that streamouts can be forced in simulation
+    
     parameter TDCBitsRaw =                      8;  // Raw TDC Bits
     parameter NumberOfTDCs =                    8;  // Number of TDCs in the design
     parameter TDCCoarseCounterWidth =           7;  // Width of TDC coarse counter
@@ -214,6 +219,8 @@ module DigitalCore(
     inout wire					                VRST;
     output wire					                VCSEL1_Anode;
     output wire                                 VCSEL2_Anode;
+    input wire [HistTotalBits-1:0]				test_pattern;
+    input wire									force_dataout;
     //-----------------------------------------------------------------------------------    
 
     //-----------------------------------------------------------------------------------
@@ -564,6 +571,7 @@ module DigitalCore(
     //    DataTx with independent load/read clocks
     //-----------------------------------------------------------------------------------
     DigitalCore_DataTx_Padded_Sync  #       (   
+    								.OVERRIDE_DATAOUT	(OVERRIDE_DATAOUT),
                                     .DataInWidth        (HistTotalBits),
                                     .SyncStages         (2))
         DataTxUnit              (   
@@ -579,10 +587,15 @@ module DigitalCore(
 
 	                                .DataOut            (TxDataOut),
 	                                .ReadClkIn          (TxRefClk),
-	                                .LoadComplete       (DataTxLoadDone)
+	                                .LoadComplete       (DataTxLoadDone), 
+	                                .test_pattern		(test_pattern)
                                 );
                                 
-    assign load_if_pattern_done = Load & ~dynamic_histogram_reset_active;
+    if (OVERRIDE_DATAOUT == "False") begin
+    	assign load_if_pattern_done = Load & ~dynamic_histogram_reset_active;
+    end else begin
+    	assign load_if_pattern_done = force_dataout;
+    end
 
     //-----------------------------------------------------------------------------------
     //    Pattern Controller

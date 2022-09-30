@@ -1,15 +1,15 @@
 //------------------------------------------------------------------------
 // FrontPanel Library Module Declarations (Verilog)
-// XEM7001
+// XEM7010
 //
 // IDELAY and IODELAY fixed delays were determined empirically to meet
 // timing for particular devices on particular products.
 //
-// Copyright (c) 2004-2015 Opal Kelly Incorporated
+// Copyright (c) 2004-2022 Opal Kelly Incorporated
 // $Rev: 980 $ $Date: 2015-07-27 14:41:30 -0700 $
 //------------------------------------------------------------------------
 
-//`default_nettype none
+`default_nettype none
 module okHost
 	(
 	input  wire [7:0]  hi_in,

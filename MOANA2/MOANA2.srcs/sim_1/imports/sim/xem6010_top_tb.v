@@ -1,4 +1,4 @@
-`timescale 1ns / 1ps
+`timescale 1ns/1ps
 
 ////////////////////////////////////////////////////////////////////////////////
 // Company: 
@@ -102,18 +102,31 @@
 `define DigitalCore_AQCDLLFinestWord_idx(n)  (n * 1      +    312)+:     1 //    312:312   
 //-------------------------------------------------------------------------------------------
 
-`define  SIMULATION_ONLY
-`define TIME_MS 1000000
+//`define SHORTEN_SIM
+`define RUN_CONTINUOUS
+
+`define TIME_OK_WAIT 50000
 
 module xem6010_top_tb;
 
+	// Options
+	localparam RANDOM_TEST_PATTERN = "True";
+	
+	// Additional settings derived from options above
+	`ifdef SHORTEN_SIM
+		localparam OVERRIDE_DATAOUT = "True";
+	`else
+		localparam OVERRIDE_DATAOUT = "False";
+	`endif
+
 	// TEST SETTINGS
 	localparam NUMBER_OF_CHIPS = 2;
-	localparam NUMBER_OF_CAPTURES = 2;
-	localparam NUMBER_OF_FRAMES = 16'd2;
-	localparam PATTERNS_PER_FRAME = 16'd2;
+	localparam NUMBER_OF_CAPTURES = 1;
+	localparam NUMBER_OF_FRAMES = 16'd1;
+	localparam PATTERNS_PER_FRAME = 16'd1;
+	localparam PACKETS_IN_TRANSFER = 16'd1; // Should equal frames * patterns
 	localparam PAD_CAPTURED_MASK = 16'b11;
-	localparam MEASUREMENTS_PER_PATTERN = 32'd25000;
+	localparam MEASUREMENTS_PER_PATTERN = 32'd50000;
 	localparam TEST_PATTERN_0 = 10'd5;
 	localparam TEST_PATTERN_1 = 10'd10;
     
@@ -129,6 +142,7 @@ module xem6010_top_tb;
     localparam  	ADDR_WIREIN_TRANSFERSIZE 						=       	8'h08;																			// Wire in for specifying expected packet size of emitter pattern 
     localparam  	ADDR_WIREIN_STREAM 									=			8'h09;																			// Wire in for specifying number of transfers to read data
     localparam 	ADDR_WIREIN_PAD_CAPTURED_MASK				=			8'h10;																			// Wire in for masking pad_captured signal based on functional ICs
+	localparam 		ADDR_WIREIN_PACKETS_IN_TRANSFER						= 8'h11;
     localparam  	ADDR_WIREOUT_STATUS 								=			8'h20;																			// Wire out for FPGA status
     localparam  	ADDR_WIREOUT_SIGNAL 								=			8'h21;																			// Wire out for direct python signal monitoring
 	localparam  	ADDR_WIREOUT_FIFOC0F2 							=	        8'h22;																			// Data count for Chip 0, FIFO 1
@@ -137,9 +151,10 @@ module xem6010_top_tb;
     localparam  	ADDR_WIREOUT_EMITTERPATTERNLSB 			= 			8'h25;																			// Emitter pattern register bank LSB
     localparam  	ADDR_WIREOUT_EMITTERPATTERNMSB 			= 			8'h26;																			// Emitter pattern register bank MSB
 	localparam 	ADDR_WIREOUT_FIFOSIZE 								= 			8'h27;																			// Max number of words in backend FIFO
-	localparam	ADDR_WIREOUT_FCSTATE								=			8'h28;																			// Wire out for frame controller state
+	localparam	ADDR_WIREOUT_FCSTATE								=			8'h28;
+	localparam ADDR_WIREOUT_RAM_READ = 8'h30;
     localparam  	ADDR_TRIGGERIN_DATASTREAMREADACK 		=      	8'h40;																			// Trigger in for enabling data stream
-    localparam  	ADDR_TRIGGEROUT_DATASTREAMREAD 		=			8'h60;																			// Trigger out for data readout during streaming mode
+    localparam  	ADDR_TRIGGEROUT_DATASTREAMREAD 		=			8'h60;
     localparam  	ADDR_PIPEIN_SCAN 										=			8'h80;																			// Pipe in for scan
     localparam  	ADDR_PIPEIN_PATTERN 								=			8'h81;																			// Pipe in for pattern data
     localparam  	ADDR_PIPEOUT_SCAN 									=			8'ha0;																			// Pipe out for scan
@@ -170,7 +185,7 @@ module xem6010_top_tb;
     localparam SIGNAL_CAPTURE_START =  16'h0004;
     localparam SIGNAL_CAPTURE_INTERRUPT = 16'h0008;
     localparam SIGNAL_FRAME_CONTROLLER_RESET = 16'h0010;
-    localparam SIGNAL_FSM_BYPASS = 16'h0020;
+    localparam SIGNAL_FSM_BYPASS = 16'h0020; 
     localparam SIGNAL_DATA_STREAM = 16'h0040;
 	 
     // Software Out Frame Controller Signals
@@ -179,12 +194,18 @@ module xem6010_top_tb;
     localparam SIGNAL_CAPTURE_RUNNING =        16'h0080;
     localparam SIGNAL_CAPTURE_DONE =           16'h0100;
     
+    // Software out ram read signals
+    localparam SIGNAL_TRANSFER_READY = 		   16'h0001;    
+    
+    
     localparam NUMBER_OF_BINS = 150;
     localparam BYTES_PER_BIN = 4;
     localparam BITS_PER_BIN = 32;
     localparam BITS_PER_WORD = 16;
+    localparam MASTER_PIPE_BITS_PER_WORD = 32;
 	
 	// Calculated based on test settings
+	localparam MASTER_PIPE_WORDS_PER_TRANSFER = NUMBER_OF_BINS * BITS_PER_BIN / MASTER_PIPE_BITS_PER_WORD;
 	localparam WORDS_PER_TRANSFER = NUMBER_OF_FRAMES * PATTERNS_PER_FRAME * NUMBER_OF_BINS * BITS_PER_BIN / BITS_PER_WORD;
 	localparam BYTES_PER_TRANSFER = WORDS_PER_TRANSFER * 2;
 	
@@ -193,25 +214,59 @@ module xem6010_top_tb;
 	localparam PACKET_BYTES = PACKET_WORDS * 2;
 	localparam PACKET_BITS_UNPADDED = PACKET_WORDS * 20;
 	localparam PACKET_BITS = PACKET_WORDS * 16;
-	
-	genvar i;
+		
+	genvar i, dqwd, dqswd;
 	integer k;
+	wire [31:0] tmp [300:0];
+	wire [31:0] tmp2 [300:0];
 	
 	//	Pattern #                     16   15   14   13   12   11   10   9    8    7    6    5    4    3    2    1
 	wire [255:0] pattern_pipe = 256'h0000_0000_0000_0000_0000_0000_0000_0000_0000_0000_0000_0000_0008_0004_0002_0001;
 	
-	// Test pattern
-	wire [9:0] test_pattern [NUMBER_OF_CHIPS-1:0];
 	
+	//------------------------------------------------------------------------
+	// Generate test patterns
+	//------------------------------------------------------------------------
+	wire [2999:0] test_pattern [NUMBER_OF_CHIPS-1:0];
+	wire [2999:0] test_pattern_fixed [NUMBER_OF_CHIPS-1:0];
+	wire [2999:0] test_pattern_random [NUMBER_OF_CHIPS-1:0];
+	
+	// Test pattern 
+	assign test_pattern[0] = (RANDOM_TEST_PATTERN == "True") ? test_pattern_random[0]: test_pattern_fixed[0];
+	assign test_pattern[1] = (RANDOM_TEST_PATTERN == "True") ? test_pattern_random[1]: test_pattern_fixed[1];
+	
+	// Random test pattern
+	generate for (i=0;i<300;i=i+1) begin
+		assign tmp[i] = $urandom();
+		assign test_pattern_random[0][(i+1)*10-1:i*10] = tmp[i][9:0];
+	end endgenerate
+
+	generate for (i=0;i<300;i=i+1) begin
+		assign tmp2[i] = $urandom();
+		assign test_pattern_random[1][(i+1)*10-1:i*10] = tmp2[i][9:0];
+	end endgenerate
+	
+	// Fixed test patterns
+	assign test_pattern_fixed[0] = {300{TEST_PATTERN_0}};
+	assign test_pattern_fixed[1] = {300{TEST_PATTERN_1}};
+	
+	
+	
+	
+		
 
 	wire [15:0] NO_MASK = 16'hffff;
 	reg [15:0] frame_controller_wire_in_register;
+	reg [15:0] ram_status_wire_out_register;
+	reg [15:0] ram_read_wire_out_register;
 	reg [15:0] power_wire_in_register;
 	reg [15:0] frame_controller_wire_out_register;
+	reg transfer_ready;
 	
 	reg [15:0] capture_count;
 	wire [15:0] frame_count;
 	wire [15:0] pattern_count;
+	wire [15:0] packets_in_transfer;
 	wire [15:0] measurements_per_pattern_msb = (MEASUREMENTS_PER_PATTERN & 32'hFF0000) >> 16;
 	wire [15:0] measurements_per_pattern_lsb = (MEASUREMENTS_PER_PATTERN & 32'hFFFF);
 	
@@ -221,6 +276,8 @@ module xem6010_top_tb;
 
 	// Inputs
 	reg [7:0] hi_in;
+	
+	reg force_dataout;
 	
 	//------------------------------------------------------------------------
 	// Clocks
@@ -261,6 +318,42 @@ module xem6010_top_tb;
 	wire [NUMBER_OF_CHIPS-1:0] vcsel2_anode;
 	wire refclk;
 	wire rstasync;
+	
+	// DDR3 signals
+  wire                 	ddr3_reset_n;
+  wire [15:0]         	ddr3_dq_fpga;
+  wire [1:0]          	ddr3_dqs_p_fpga;
+  wire [1:0]           	ddr3_dqs_n_fpga;
+  wire [14:0]        	ddr3_addr_fpga;
+  wire [2:0]        	ddr3_ba_fpga;
+  wire         			ddr3_ras_n_fpga;
+  wire              	ddr3_cas_n_fpga;
+  wire             		ddr3_we_n_fpga;
+  wire [1-1:0]       	ddr3_cke_fpga;
+  wire [1-1:0]        	ddr3_ck_p_fpga;
+  wire [1-1:0]       	ddr3_ck_n_fpga;
+  wire 					sys_rst;
+  wire					sys_rst_n = ~sys_rst;
+  wire                 	init_calib_complete;
+  wire              	tg_compare_error;
+  wire [1:0]      		ddr3_dm_fpga;
+  wire                	ddr3_odt_fpga;
+  reg [1:0]           	ddr3_dm_sdram_tmp;
+  reg                	ddr3_odt_sdram_tmp;
+  wire [15:0]        	ddr3_dq_sdram;
+  reg [14:0]          	ddr3_addr_sdram ;
+  reg [2:0]          	ddr3_ba_sdram;
+  reg              		ddr3_ras_n_sdram;
+  reg                	ddr3_cas_n_sdram;
+  reg                 	ddr3_we_n_sdram;
+  wire  				ddr3_cs_n_sdram;
+  wire                	ddr3_odt_sdram;
+  reg                 	ddr3_cke_sdram;
+  wire [1:0]      		ddr3_dm_sdram;
+  wire [1:0]      		ddr3_dqs_p_sdram;
+  wire [1:0]         	ddr3_dqs_n_sdram;
+  reg                  	ddr3_ck_p_sdram;
+  reg                  	ddr3_ck_n_sdram;
 	
 	//------------------------------------------------------------------------
 	// Begin okHostInterface simulation user configurable  global data
@@ -339,52 +432,136 @@ module xem6010_top_tb;
 		assign pipeOut_flat[(i+1)*8 +: 8] = pipeOut[i];
 		assign pipeOut_flat[i*8 +: 8] = pipeOut[i+1];
 	end endgenerate
-
 	
+
 	//------------------------------------------------------------------------
+	// Bus control
+	//------------------------------------------------------------------------
+	always @( * ) begin
+		ddr3_ck_p_sdram      <=   ddr3_ck_p_fpga;
+		ddr3_ck_n_sdram      <=   ddr3_ck_n_fpga;
+		ddr3_addr_sdram   	 <=   ddr3_addr_fpga;
+		ddr3_ba_sdram     	 <=   ddr3_ba_fpga;
+		ddr3_ras_n_sdram     <=   ddr3_ras_n_fpga;
+		ddr3_cas_n_sdram     <=   ddr3_cas_n_fpga;
+		ddr3_we_n_sdram      <=   ddr3_we_n_fpga;
+		ddr3_cke_sdram       <=   ddr3_cke_fpga;
+	end
 	
-	// Continuously update the ScanBitsRd with the new test pattern
-//	generate for (i=0;i<NUMBER_OF_CHIPS;i=i+1) begin
-//		always @(*) begin
-//			ScanBitsRd[i][`DigitalCore_TestDataIn] = test_pattern[i];
-//		end
-//	end endgenerate
+	assign ddr3_cs_n_sdram =  1'b0;
 	
+	
+	always @( * ) ddr3_dm_sdram_tmp <=  ddr3_dm_fpga; //DM signal generation
+	assign ddr3_dm_sdram = ddr3_dm_sdram_tmp;
+	
+	
+	always @( * ) ddr3_odt_sdram_tmp  <= ddr3_odt_fpga;
+	assign ddr3_odt_sdram =  ddr3_odt_sdram_tmp;
+    
+
+	// Controlling the bi-directional BUS
+	generate
+		for (dqwd = 1;dqwd < 16;dqwd = dqwd+1) begin : dq_delay
+		  WireDelay #
+		   (
+			.Delay_g    (0.0),
+			.Delay_rd   (0.0),
+			.ERR_INSERT ("OFF")
+		   )
+		  u_delay_dq
+		   (
+			.A             (ddr3_dq_fpga[dqwd]),
+			.B             (ddr3_dq_sdram[dqwd]),
+			.reset         (sys_rst_n),
+			.phy_init_done (init_calib_complete)
+		   );
+		end
+			  WireDelay #
+		   (
+			.Delay_g    (0.0),
+			.Delay_rd   (0.0),
+			.ERR_INSERT ("OFF")
+		   )
+		  u_delay_dq_0
+		   (
+			.A             (ddr3_dq_fpga[0]),
+			.B             (ddr3_dq_sdram[0]),
+			.reset         (sys_rst_n),
+			.phy_init_done (init_calib_complete)
+		   );
+	endgenerate
+
+	generate
+		for (dqswd = 0;dqswd < 2;dqswd = dqswd+1) begin : dqs_delay
+		  WireDelay #
+		   (
+			.Delay_g    (0.0),
+			.Delay_rd   (0.0),
+			.ERR_INSERT ("OFF")
+		   )
+		  u_delay_dqs_p
+		   (
+			.A             (ddr3_dqs_p_fpga[dqswd]),
+			.B             (ddr3_dqs_p_sdram[dqswd]),
+			.reset         (sys_rst_n),
+			.phy_init_done (init_calib_complete)
+		   );
+		
+		  WireDelay #
+		   (
+			.Delay_g    (0.0),
+			.Delay_rd   (0.0),
+			.ERR_INSERT ("OFF")
+		   )
+		  u_delay_dqs_n
+		   (
+			.A             (ddr3_dqs_n_fpga[dqswd]),
+			.B             (ddr3_dqs_n_sdram[dqswd]),
+			.reset         (sys_rst_n),
+			.phy_init_done (init_calib_complete)
+		   );
+		end
+	endgenerate
 
 
-	// Instantiate the FPGA
+	// XEM7010
 	xem6010_top uut (
-		.hi_in(hi_in), 
-		.hi_out(hi_out), 
-		.hi_inout(hi_inout), 
-		.hi_aa(hi_aa),
-		.hi_muxsel(hi_muxsel), 
-		.sys_clk_p(sys_clk_p), 
-		.sys_clk_n(sys_clk_n), 
-//		.ref_clk_pll(refclk_pll),
-//		.tx_refclk_mmcm(tx_refclk_pll),
-		.led(), 
-		.MC1(MC1)
+		.hi_in			(hi_in), 
+		.hi_out			(hi_out), 
+		.hi_inout		(hi_inout), 
+		.hi_aa			(hi_aa),
+		.hi_muxsel		(hi_muxsel), 
+		.sys_clk_p		(sys_clk_p), 
+		.sys_clk_n		(sys_clk_n),
+		.led			(), 
+		.MC1			(MC1),
+		.ddr3_dq		(ddr3_dq_fpga),
+		.ddr3_addr		(ddr3_addr_fpga),
+		.ddr3_ba		(ddr3_ba_fpga),
+		.ddr3_ras_n		(ddr3_ras_n_fpga),
+		.ddr3_cas_n		(ddr3_cas_n_fpga),
+		.ddr3_we_n		(ddr3_we_n_fpga),
+		.ddr3_odt		(ddr3_odt_fpga),
+		.ddr3_cke		(ddr3_cke_fpga),
+		.ddr3_dm		(ddr3_dm_fpga),
+		.ddr3_dqs_p		(ddr3_dqs_p_fpga),
+		.ddr3_dqs_n		(ddr3_dqs_n_fpga),
+		.ddr3_ck_p		(ddr3_ck_p_fpga),
+		.ddr3_ck_n		(ddr3_ck_n_fpga),
+		.ddr3_reset_n	(ddr3_reset_n), 
+		.sys_rst		(sys_rst),
+		.init_calib_complete(init_calib_complete)
+		
 	);
 	
 	
-	
-	
-	//-----------------------------------------------------------------------------------
-    //    Scan Chain Clock Generator
-    //-----------------------------------------------------------------------------------
-//    ScanClockGen    ClkG    (   .RefClk             (scan_clk),
-//                                .Reset              (s_reset_tb),
-//                                .ClkEn              (1'b1),
-//                                .SClkP              (s_clk_p_tb),
-//                                .SClkN              (s_clk_n_tb));    
-    //-----------------------------------------------------------------------------------
-	
-//	 ICs
+	// MOANA3 ICs
 	generate 
 		for (i = 0; i < NUMBER_OF_CHIPS; i = i+1) begin
 	
-		DigitalCore   IC      (     
+		DigitalCore   
+			#(	.OVERRIDE_DATAOUT(OVERRIDE_DATAOUT)) 
+			IC       (     
 			.SClkP(s_clk_p),
 			.SClkN(s_clk_n),
 			.SReset(s_reset),
@@ -404,366 +581,63 @@ module xem6010_top_tb;
 			.RefClk(refclk),
 			.RstAsync(rstasync),
 			.ScanBitsRd(),
-			.ScanBitsWr(ScanBitsRd[i])
+			.ScanBitsWr(ScanBitsRd[i]),
+			
+			.test_pattern(test_pattern[i]),
+			.force_dataout(force_dataout)
 			);
 			
 		end 
 	endgenerate
 	
-	task fpga_logic_reset;
-		begin
-			$display("Resetting FPGA logic");
-			SetWireInValue(ADDR_WIREIN_MSGCTRL, MSGCTRL_RST, NO_MASK);
-			UpdateWireIns;
-			SetWireInValue(ADDR_WIREIN_MSGCTRL, MSGCTRL_FIFO_RST, NO_MASK);
-			UpdateWireIns;
-			SetWireInValue(ADDR_WIREIN_MSGCTRL, NONE, NO_MASK);
-			UpdateWireIns;
-		end
-	endtask
 	
 	
-	task cell_reset;
-		begin
-			// Send WireIn reset signal
-			$display("Resetting chips");
-			SetWireInValue(ADDR_WIREIN_SIGNAL, SIGNAL_CELL_RST, NO_MASK);
-			UpdateWireIns;
-			SetWireInValue(ADDR_WIREIN_SIGNAL, NONE, NO_MASK);
-			UpdateWireIns;
-		end
-	endtask
-	
-	task scan_reset;
-		begin
-			// Send WireIn scan reset signal
-			$display("Resetting scan chains");
-			SetWireInValue(ADDR_WIREIN_SIGNAL, SIGNAL_SCAN_RST, NO_MASK);
-			UpdateWireIns;
-			SetWireInValue(ADDR_WIREIN_SIGNAL, NONE, NO_MASK);
-			UpdateWireIns;
-		end
-	endtask
-	
-	task reset_mmcm;
-		begin
-			$display("Resetting MMCM");
-			tiehi_power_signal(SIGNAL_MMCM_RST);
-			UpdateWireIns;
-			tielo_power_signal(SIGNAL_MMCM_RST);
-			UpdateWireIns;
-		end
-	endtask
-	
-	task start_mmcm;
-		begin
-			$display("Enabling MMCM");
-			tiehi_power_signal(SIGNAL_REF_CLK_MMCM_ENABLE);
-			UpdateWireIns;
-		end
-	endtask
-		
-	
-	task send_frame_data;
-		begin
-			$display("Sending frame data to FrameController");
-			SetWireInValue(ADDR_WIREIN_FRAME, NUMBER_OF_FRAMES, NO_MASK);
-			$display("Number of frames is %d", NUMBER_OF_FRAMES);
-			SetWireInValue(ADDR_WIREIN_PATTERN, PATTERNS_PER_FRAME, NO_MASK);
-			$display("Patterns per frame is %d", PATTERNS_PER_FRAME);
-			SetWireInValue(ADDR_WIREIN_MEASUREMENT_LSB, measurements_per_pattern_lsb, NO_MASK);
-			SetWireInValue(ADDR_WIREIN_MEASUREMENT_MSB, measurements_per_pattern_msb, NO_MASK);
-			$display("Measurements per pattern is %d", MEASUREMENTS_PER_PATTERN);
-			SetWireInValue(ADDR_WIREIN_PAD_CAPTURED_MASK, PAD_CAPTURED_MASK, NO_MASK);
-			$display("Pad captured mask is %b", PAD_CAPTURED_MASK);
-			UpdateWireIns;
-		end
-	endtask
-	
-	task send_data_stream_config;
-		begin
-			$display("Sending stream data to FrameController");
-			SetWireInValue(ADDR_WIREIN_STREAM, WORDS_PER_TRANSFER[15:0], NO_MASK);
-			UpdateWireIns;
-			$display("Words per transfer is %d", WORDS_PER_TRANSFER);
-		end
-	endtask
-	
-	task tiehi_fc_signal;
-		input [15:0] signal;
-		begin
-			frame_controller_wire_in_register = frame_controller_wire_in_register | signal;
-			SetWireInValue(ADDR_WIREIN_FRAMECTRL, frame_controller_wire_in_register, NO_MASK);
-			UpdateWireIns;
-		end
-	endtask
-	
-	task tielo_fc_signal;
-		input [15:0] signal;
-		begin
-			frame_controller_wire_in_register = frame_controller_wire_in_register & (~signal);
-			SetWireInValue(ADDR_WIREIN_FRAMECTRL, frame_controller_wire_in_register, NO_MASK);
-			UpdateWireIns;
-		end
-	endtask
-	
-	task tiehi_power_signal;
-		input [15:0] signal;
-		begin
-			power_wire_in_register = power_wire_in_register | signal;
-			SetWireInValue(ADDR_WIREIN_POWER, power_wire_in_register, NO_MASK);
-			UpdateWireIns;
-		end
-	endtask
-	
-	task tielo_power_signal;
-		input [15:0] signal;
-		begin
-			power_wire_in_register = power_wire_in_register & (~signal);
-			SetWireInValue(ADDR_WIREIN_POWER, power_wire_in_register, NO_MASK);
-			UpdateWireIns;
-		end
-	endtask
-	
-	task check_capture_idle;
-		begin
-			UpdateWireOuts;
-			frame_controller_wire_out_register = GetWireOutValue(ADDR_WIREOUT_SIGNAL);
-			$display("Capture idle: %d", ~(frame_controller_wire_out_register & SIGNAL_CAPTURE_IDLE));
-		end
-	endtask
-	
-	task run_capture;
-		begin
-			$display("Running capture");
-			$display("Set: scan done");
-			tiehi_fc_signal(SIGNAL_SCAN_DONE);
-			UpdateWireIns;
-			$display("Set: frame data sent");
-			tiehi_fc_signal(SIGNAL_FRAME_DATA_SENT);
-			UpdateWireIns;
-			$display("Check: frame data received");
-			while (!(frame_controller_wire_out_register & SIGNAL_FRAME_DATA_RECEIVED)) begin
-				UpdateWireOuts;
-				frame_controller_wire_out_register = GetWireOutValue(ADDR_WIREOUT_SIGNAL);
-				#(`TIME_MS);
-			end
-			$display("Unset: frame data sent");
-			tielo_fc_signal(SIGNAL_FRAME_DATA_SENT);
-			$display("Set: capture start");
-			tiehi_fc_signal(SIGNAL_CAPTURE_START);
-			$display("Check: capture done");
-			while (!(frame_controller_wire_out_register & SIGNAL_CAPTURE_DONE)) begin
-				UpdateWireOuts;
-				frame_controller_wire_out_register = GetWireOutValue(ADDR_WIREOUT_SIGNAL);
-				#(`TIME_MS);
-			end
-			$display("Unset: capture start");
-			tielo_fc_signal(SIGNAL_CAPTURE_START);
-			$display("Unset: frame data sent");
-			tielo_fc_signal(SIGNAL_FRAME_DATA_SENT);
-			$display("Unset: scan done");
-			tielo_fc_signal(SIGNAL_SCAN_DONE);
-			$display("Capture complete");
-		end
-	endtask
-	
-	task read_master_fifo_data;
-		begin
-		ReadFromPipeOut(ADDR_PIPEOUT_FIFO_MASTER, pipeOutSize);
-		end
-	endtask
+	// DDR3 SDRAM
+	ddr3_model  u_ddr3(
+			.rst_n				(ddr3_reset_n),
+			.ck					(ddr3_ck_p_sdram),
+			.ck_n				(ddr3_ck_n_sdram),
+			.cke				(ddr3_cke_sdram),
+			.cs_n				(ddr3_cs_n_sdram),
+			.ras_n				(ddr3_ras_n_sdram),
+			.cas_n				(ddr3_cas_n_sdram),
+			.we_n				(ddr3_we_n_sdram),
+			.dm_tdqs			(ddr3_dm_sdram[1:0]),
+			.ba					(ddr3_ba_sdram),
+			.addr				(ddr3_addr_sdram),
+			.dq					(ddr3_dq_sdram),
+			.dqs				(ddr3_dqs_p_sdram),
+			.dqs_n				(ddr3_dqs_n_sdram),
+			.tdqs_n				(),
+			.odt				(ddr3_odt_sdram)
+);
 	
 	
-//	// Scan in some number of bits
-//	task scan_in;
-//
-//		integer                             i;
-//
-//		begin
-//			@(posedge s_clk_p_tb);
-//			scan_tb_control <= 1'b1;
-//			@(posedge s_clk_p_master);
-//			for (i=0;i<NUMBER_OF_CHIPS;i=i+1) begin
-//				ScanBitsRd[i] = global_scan_in_data[i][GlobalScanLength-1:0];
-//			end
-//			@(posedge s_clk_p_master);
-//			scan_update;
-//			
-//		end
-//	endtask
-//
-//	// Scan update
-//	task scan_update;
-//	  begin
-//			s_update_tb = 1'b1;
-//			@(posedge s_clk_p_master);
-//			s_update_tb = 1'b0;
-//			@(posedge s_clk_p_master);
-//			scan_tb_control <= 1'b0;
-//			@(posedge s_clk_p_tb);
-//	  end
-//	endtask
-	
-	// Print pipeOut values
-	task print_pipeOut_flat;
-		input [15:0] capture_number;
-		integer chip, frame, pattern, bin;
-		integer chip_offset, frame_offset, pattern_offset, bin_offset, offset;
-		begin
-		
-			// Loop through each chip
-			for (chip=0;chip<NUMBER_OF_CHIPS;chip=chip+1) begin
-			
-				// Calculate the offset for the chip in the flat pipeout packet
-				chip_offset = chip * NUMBER_OF_FRAMES * PATTERNS_PER_FRAME * 150 * 32;
-				
-				// Loop through each frame
-				for (frame=0;frame<NUMBER_OF_FRAMES;frame=frame+1) begin
-				
-					// Calculate the offset for the frame in the chip's packet
-					frame_offset = frame * PATTERNS_PER_FRAME * 150 * 32;
-					
-					// Loop through each pattern
-					for (pattern=0;pattern<PATTERNS_PER_FRAME;pattern=pattern+1) begin
-					
-					// Calculate the offset for the pattern in the frame packet
-					pattern_offset = pattern * 150 * 32;
-					
-						// Loop through each bin
-						for (bin=0;bin<150;bin=bin+1) begin
-						
-							// Calculate the offset for the bin in the pattern packet
-							bin_offset = bin * 32;
-							
-							// Calculate total offset for the value of the bin
-							offset = chip_offset + frame_offset + pattern_offset + bin_offset;
-							
-							// Calculate the pipe out value
-							
-							// Print the value
-							$display("PIPE OUT: Capture %0d, Chip %0d, Frame %0d, Pattern %0d, Bin %0d: %b %b", capture_number, chip, frame, pattern, bin, pipeOut_flat[offset +: 16], pipeOut_flat[offset + 16 +: 16]);
-							
-						end
-					end
-				end
-			end
-		end
-	endtask
-	
-	
-	function [NUMBER_OF_CHIPS-1:0] check_data_packet;
-		input [15:0] capture_number;
-		input [PACKET_BITS-1:0] fifo_data_flat;
-		input [NUMBER_OF_CHIPS*10-1:0] pattern_flat;
-		reg [PACKET_BITS-1:0] packet_data;
-		reg [PACKET_BITS_UNPADDED-1:0] packet_data_unpadded;
-		reg [NUMBER_OF_CHIPS-1:0] passed;
-		reg [PACKET_BITS-1:0] shift_reg;
-		reg [31:0] i;
-		reg [9:0] pattern_holder;		
-		reg [31:0] chip, frame, pattern, bin;
-		reg [31:0] chip_offset, frame_offset, pattern_offset, bin_offset, offset;
-		begin
-			
-			// Display some info
-			$display("check_data_packet function called");
-			$display("Number Of Chips: %0d", NUMBER_OF_CHIPS);
-			$display("Packet Words: %d0", PACKET_WORDS);
-			$display("Packet Bytes: %0d", PACKET_BYTES);
-			$display("Packet Bits: %0d", PACKET_BITS);
-			$display("Packet Bits Unpadded: %0d", PACKET_BITS_UNPADDED);
+	// Include helpful tasks
+	`include "/users/krenehan/MOANA3/FPGA/MOANA3_Rigid_2by1_XEM7010_Verilog/MOANA2/MOANA2.srcs/sim_1/imports/sim/xem6010_top_tasks.v"
 
-		
-			// Unpad the data
-			shift_reg = fifo_data_flat;
-			for (i=0;i<PACKET_WORDS;i=i+1) begin
-			
-				// Display information
-				$display("Shift register data is %b", shift_reg[31:0]);
-			
-				// Get 20 bits
-				packet_data_unpadded[i*20 +: 20] = shift_reg[19:0];
-				$display("Packet data is %b", packet_data_unpadded[i*20 +: 20]);
-				
-				// Shift out 32 bits
-				shift_reg = {32'b0, shift_reg[PACKET_BITS-1:32]};
-				
-			end
-			
-			// Assume passed
-			passed = {NUMBER_OF_CHIPS{1'b1}};
-			
-			// Check the packets
-			for (chip=0;chip<NUMBER_OF_CHIPS;chip=chip+1) begin
-				
-				// Chip index offset
-				chip_offset = chip * NUMBER_OF_FRAMES * PATTERNS_PER_FRAME * 300 * 10;
-				
-				for (frame=0;frame<NUMBER_OF_FRAMES;frame=frame+1) begin
-				
-					// Frame index offset
-					frame_offset = frame * PATTERNS_PER_FRAME * 300 * 10;
-					
-					for (pattern=0;pattern<PATTERNS_PER_FRAME;pattern=pattern+1) begin
-					
-					// Pattern index offset
-					pattern_offset = pattern * 300 * 10;
-					
-						for (bin=0;bin<300;bin=bin+1) begin
-						
-							// Bin offset
-							bin_offset = bin * 10;
-							
-							// Calculate the actual offset and check the packet is correct
-							offset = chip_offset + frame_offset + pattern_offset + bin_offset;
-							
-							// Calculate the correct test pattern value
-							pattern_holder = pattern_flat[10*chip +: 10] + capture_number + frame + pattern;
-							$display("PATTERN HOLDER: %d", pattern_holder);
-							
-							if (packet_data_unpadded[offset +: 10] == pattern_holder) begin
-								$display("TEST BIN PASS: Capture %0d, Chip %0d, Frame %0d, Pattern %0d, Bin %0d: %d", capture_number, chip, frame, pattern, bin, packet_data_unpadded[offset +: 10]);
-							end else begin
-								$display("TEST BIN FAIL: Capture %0d, Chip %0d, Frame %0d, Pattern %0d, Bin %0d: %d", capture_number, chip, frame, pattern, bin, packet_data_unpadded[offset +: 10]);
-								passed[chip] = 1'b0;
-							end
-							
-						end
-					end
-				end
-			end
-			
-			// Report results
-			for (chip=0;chip<NUMBER_OF_CHIPS;chip=chip+1) begin
-				if (passed[chip]) begin
-					$display("TEST CAPTURE PASS: Chip %0d, Capture %0d", chip, capture_number);
-				end else begin
-					$display("TEST CAPTURE FAIL: Chip %0d, Capture %0d", chip, capture_number);
-				end
-			end
-			
-			// Finish function
-			check_data_packet = passed;
-			
-		end
-	endfunction
-		
-		
 
 	initial begin
-		// Initialize clocks
+	
+		// Initialize registers
 		scan_clk = 0;
 		sys_clk_p = 0;
 		refclk_pll = 0;
 		tx_refclk_pll = 0;
 		frame_controller_wire_in_register = 0;
 		power_wire_in_register = 0;
+		ram_status_wire_out_register = 0;
+		ram_read_wire_out_register = 0;
 		frame_controller_wire_out_register = 0;
+		force_dataout = 0;
+		transfer_ready = 0;
+		
 		for (k=0;k<NUMBER_OF_CHIPS;k=k+1) begin
 			//global_scan_in_data[k] = 0;
 			ScanBitsRd[k] = 0;
 		end
+		
+		repeat (10) @(posedge sys_clk_p);
 
 		// Reset FPGA endpoint
 		FrontPanelReset;
@@ -797,9 +671,6 @@ module xem6010_top_tb;
 		// Test data in
 		ScanBitsRd[0][`DigitalCore_TestDataIn] = TEST_PATTERN_0;
 		ScanBitsRd[1][`DigitalCore_TestDataIn] = TEST_PATTERN_1;
-
-		//Scan configuration settings in
-		//scan_in;
 		
 		// Configure frame controller settings
 		send_frame_data;
@@ -813,15 +684,49 @@ module xem6010_top_tb;
 		// Reset chips
 		cell_reset;
 		
+		`ifdef RUN_CONTINUOUS
+		
+			// Set FSM bypass
+			$display("TIME %0t: INFO: setting FSM bypass", $time);
+			tiehi_fc_signal(SIGNAL_FSM_BYPASS);
+			#(2000000);
+			
+		`endif
+		
 		// Main capture and readout loop
 		for (k=0;k<NUMBER_OF_CAPTURES;k=k+1) begin
 		
 			// Set the capture count
 			capture_count = k;
-		
-			// Run frame controller
-			$display("Starting capture %0d", k);
-			run_capture;
+			
+			`ifdef RUN_CONTINUOUS
+			
+				// Wait for transfer ready signal
+				check_transfer_ready;
+				check_transfer_ready;
+				while (!(transfer_ready === 1'b1)) begin
+					$display("TIME %0t: INFO: waiting for transfer ready", $time);
+					#(`TIME_OK_WAIT);
+					check_transfer_ready;
+				end
+			
+			`elsif SHORTEN_SIM
+			
+				// Force histogram streamout
+				init_capture;
+				force_histogram;
+				#(`TIME_OK_WAIT);
+				force_histogram;
+			
+			`else
+
+				// Run frame controller
+				run_capture;
+			
+			`endif
+			
+			// Wait before reading from FIFO
+			#(`TIME_OK_WAIT);
 		
 			// Read data
 			read_master_fifo_data;
@@ -829,14 +734,21 @@ module xem6010_top_tb;
 			// Print the pipeout
 			print_pipeOut_flat(k);
 			
-			// Check the data packet
-			//check_data_packet(k, pipeOut_flat, test_pattern_flat);
+	end
+	
+		`ifdef RUN_CONTINUOUS
+		
+			// Set FSM bypass
+			$display("TIME %0t: INFO: setting FSM bypass", $time);
+			tielo_fc_signal(SIGNAL_FSM_BYPASS);
 			
-			#(`TIME_MS);
-			
-		end
+		`endif
+
+		// Add some margin at the end of the sim
+		#(1000);
 		
 		// End sim
+		$display("TIME %0t: INFO: simulation completed successfully", $time);
 		$finish;
 		
 		
@@ -844,6 +756,8 @@ module xem6010_top_tb;
 	
 	// Include okHostCalls
 	`include "/users/krenehan/MOANA2/FPGA/generic_scan_4by4_bkp/verilog/frontpanel_usb2_sim/okHostCalls.v"
+	
+	
 	
       
 endmodule

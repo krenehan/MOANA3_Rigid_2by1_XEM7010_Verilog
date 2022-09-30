@@ -8,6 +8,7 @@
 *
 !*/
 !.gitignore
+
 ###########################################################################
 ##	VIVADO
 ###########################################################################
@@ -42,7 +43,7 @@
 #########
 #Simulation logic analyzer
 #########
-!*.wcfg
+#!*.wcfg
 #!*.coe
 #########
 #MIG
@@ -84,4 +85,41 @@
 !*.elf
 !*.bmm
 !*.xmp
+
+#########
+#Specifics
+#########
+MOANA2/MOANA2.cache
+planAhead_run*
+MOANA2/MOANA2.runs
+isim
+netgen
+MOANA2/MOANA2.sim
+clk_wiz_0_ex
+xem6010
+MOANA2/MOANA2.srcs/sources_1/imports/generic_scan_KR_version/xilinx/
+MOANA2/MOANA2.gen/sources_1/ip/ddr3_256_16/ddr3_256_16/example_design/par/
+MOANA2/MOANA2.gen/sources_1/ip/ddr3_256_16/ddr3_256_16/example_design/rtl/
+MOANA2/MOANA2.gen/sources_1/ip/ddr3_256_16/ddr3_256_16/user_design/
+MOANA2/MOANA2.gen/sources_1/ip/fifo_W128_R16/
+MOANA2/MOANA2.gen/sources_1/ip/fifo_W128_R32/
+MOANA2/MOANA2.gen/sources_1/ip/fifo_W16_R8/
+MOANA2/MOANA2.gen/sources_1/ip/fifo_W1_R1/
+MOANA2/MOANA2.gen/sources_1/ip/fifo_W1_R8/
+MOANA2/MOANA2.gen/sources_1/ip/fifo_W32_R128/
+MOANA2/MOANA2.gen/sources_1/ip/fifo_W32_R128_FWFT/
+MOANA2/MOANA2.gen/sources_1/ip/fifo_W32_R16/
+MOANA2/MOANA2.gen/sources_1/ip/fifo_W32_R32/
+MOANA2/MOANA2.gen/sources_1/ip/fifo_W8_R1/
+MOANA2/MOANA2.gen/sources_1/ip/fifo_W8_R16/
+MOANA2/MOANA2.gen/sources_1/ip/fifo_W8_R32/
+MOANA2/MOANA2.gen/sources_1/ip/fifo_W8_R32_FWFT/
+MOANA2/MOANA2.gen/sources_1/ip/clk_wiz_0_1/
+MOANA2/MOANA2.srcs/sources_1/ip/fifo_W128_R16/
+MOANA2/MOANA2.srcs/sources_1/ip/fifo_W32_R32/
+MOANA2/MOANA2.srcs/sources_1/ip/fifo_W8_R32_FWFT/
+MOANA2/MOANA2.ip_user_files/
+
+
+
 
