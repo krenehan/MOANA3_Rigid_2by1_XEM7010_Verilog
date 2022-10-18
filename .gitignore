@@ -119,6 +119,11 @@ MOANA2/MOANA2.srcs/sources_1/ip/fifo_W128_R16/
 MOANA2/MOANA2.srcs/sources_1/ip/fifo_W32_R32/
 MOANA2/MOANA2.srcs/sources_1/ip/fifo_W8_R32_FWFT/
 MOANA2/MOANA2.ip_user_files/
+MOANA2/MOANA2.gen/sources_1/ip/fifo_W16_R16/
+MOANA2/MOANA2.gen/sources_1/ip/fifo_W16_R16_FWFT/
+MOANA2/MOANA2.srcs/sources_1/ip/fifo_W16_R16/
+MOANA2/MOANA2.srcs/sources_1/ip/fifo_W16_R16_FWFT/
+
 
 
 
