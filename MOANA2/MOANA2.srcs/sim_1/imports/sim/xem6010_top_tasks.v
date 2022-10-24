@@ -16,10 +16,9 @@ task cell_reset;
 	begin
 		// Send WireIn reset signal
 		$display("TIME %0t: INFO: resetting chips", $time);
-		SetWireInValue(ADDR_WIREIN_SIGNAL, SIGNAL_CELL_RST, NO_MASK);
-		UpdateWireIns;
-		SetWireInValue(ADDR_WIREIN_SIGNAL, NONE, NO_MASK);
-		UpdateWireIns;
+		tiehi_signal(SIGNAL_CELL_RST);
+		#(5000);
+		tielo_signal(SIGNAL_CELL_RST);
 		$display("TIME %0t: INFO: done resetting chips", $time);
 	end
 endtask
@@ -28,10 +27,9 @@ task scan_reset;
 	begin
 		// Send WireIn scan reset signal
 		$display("TIME %0t: INFO: resetting scan chains", $time);
-		SetWireInValue(ADDR_WIREIN_SIGNAL, SIGNAL_SCAN_RST, NO_MASK);
-		UpdateWireIns;
-		SetWireInValue(ADDR_WIREIN_SIGNAL, NONE, NO_MASK);
-		UpdateWireIns;
+		tiehi_signal(SIGNAL_SCAN_RST);
+		#(5000);
+		tielo_signal(SIGNAL_SCAN_RST);
 		$display("TIME %0t: INFO: done resetting scan chains", $time);
 	end
 endtask
@@ -53,6 +51,29 @@ task start_mmcm;
 		tiehi_power_signal(SIGNAL_REF_CLK_MMCM_ENABLE);
 		UpdateWireIns;
 		$display("TIME %0t: INFO: done enabling MMCM", $time);
+	end
+endtask
+
+task activate_dynamic_mode;
+	begin
+		$display("TIME %0t: INFO: setting dynamic mode", $time);
+		tiehi_signal(SIGNAL_DYNAMIC_MODE);
+		$display("TIME %0t: INFO: done setting dynamic mode", $time);
+	end
+endtask
+
+task send_dynamic_pattern_data;
+	begin
+	$display("TIME %0t: INFO: sending dynamic pattern data to FPGA", $time);
+	
+	// Write to pipe in
+	WriteToPipeIn(ADDR_PIPEIN_PATTERN, pipeInSize);
+	#(5000);
+	
+	// Indicate that pipe in is done
+	$display("TIME %0t: INFO: setting dynamic pattern pipe in complete", $time);
+	tiehi_signal(SIGNAL_DYNAMIC_PATTERN_PIPE_IN_COMPLETE);
+	
 	end
 endtask
 	
@@ -101,6 +122,24 @@ task send_data_stream_config;
 		UpdateWireIns;
 		
 		$display("TIME %0t: INFO: done sending stream data to FrameController", $time);
+	end
+endtask
+
+task tiehi_signal;
+	input [15:0] signal;
+	begin
+		signal_wire_in_register = signal_wire_in_register | signal;
+		SetWireInValue(ADDR_WIREIN_SIGNAL, signal_wire_in_register, NO_MASK);
+		UpdateWireIns;
+	end
+endtask
+
+task tielo_signal;
+	input [15:0] signal;
+	begin
+		signal_wire_in_register = signal_wire_in_register & (~signal);
+		SetWireInValue(ADDR_WIREIN_SIGNAL, signal_wire_in_register, NO_MASK);
+		UpdateWireIns;
 	end
 endtask
 
@@ -206,10 +245,6 @@ task init_capture;
 		// Unset frame data sent
 		$display("TIME %0t: INFO: unsetting frame data sent", $time);
 		tielo_fc_signal(SIGNAL_FRAME_DATA_SENT);
-		
-		// Unset capture start
-		$display("TIME %0t: INFO: setting capture start", $time);
-		tiehi_fc_signal(SIGNAL_CAPTURE_START);
 	end
 endtask
 		
@@ -219,6 +254,10 @@ task run_capture;
 	
 		// Initialize capture
 		init_capture;
+		
+		// Set capture start
+		$display("TIME %0t: INFO: setting capture start", $time);
+		tiehi_fc_signal(SIGNAL_CAPTURE_START);
 		
 		// Check for capture done
 		$display("TIME %0t: INFO: checking for capture done", $time);
@@ -303,7 +342,7 @@ task print_pipeOut_flat;
 						
 						// Find the correct value for the test pattern
 						correct_packet_value = test_pattern[chip][raw_data_offset +: 20];
-						$display("TIME %0t: VERIFY DATA: Capture %2d: Chip %2d: Frame %2d: Pattern %2d: Bin %2d: %0b", $time, capture_number, chip, frame, pattern, bin, correct_packet_value[19:0]);
+						$display("TIME %0t: VERIFY DATA: Capture %2d: Chip %2d: Frame %2d: Pattern %2d: Bin %2d: %32b", $time, capture_number, chip, frame, pattern, bin, correct_packet_value[19:0]);
 						
 						// Unshuffle data out packet
 						unshuffled = { pipeOut_flat[offset +: 16], pipeOut_flat[offset + 16 +: 16] };
