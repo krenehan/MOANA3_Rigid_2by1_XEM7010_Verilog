@@ -103,7 +103,7 @@
 //-------------------------------------------------------------------------------------------
 
 //`define SHORTEN_SIM
-`define RUN_CONTINUOUS
+`define BLITZ_MODE
 
 `define TIME_OK_WAIT 50000
 
@@ -111,6 +111,7 @@ module xem6010_top_tb;
 
 	// Options
 	localparam RANDOM_TEST_PATTERN = "True";
+	localparam DYNAMIC_MODE = "True";
 	
 	// Additional settings derived from options above
 	`ifdef SHORTEN_SIM
@@ -123,10 +124,10 @@ module xem6010_top_tb;
 	localparam NUMBER_OF_CHIPS = 2;
 	localparam NUMBER_OF_CAPTURES = 1;
 	localparam NUMBER_OF_FRAMES = 16'd1;
-	localparam PATTERNS_PER_FRAME = 16'd1;
-	localparam PACKETS_IN_TRANSFER = 16'd1; // Should equal frames * patterns
+	localparam PATTERNS_PER_FRAME = 16'd2;
+	localparam PACKETS_IN_TRANSFER = 16'd2; // Should equal frames * patterns
 	localparam PAD_CAPTURED_MASK = 16'b11;
-	localparam MEASUREMENTS_PER_PATTERN = 32'd50000;
+	localparam MEASUREMENTS_PER_PATTERN = 32'd30000;
 	localparam TEST_PATTERN_0 = 10'd5;
 	localparam TEST_PATTERN_1 = 10'd10;
     
@@ -172,6 +173,8 @@ module xem6010_top_tb;
 	// Software in signals
 	localparam SIGNAL_SCAN_RST = 16'h0001;
 	localparam SIGNAL_CELL_RST = 16'h0002;
+	localparam SIGNAL_DYNAMIC_MODE = 16'h0004;
+	localparam SIGNAL_DYNAMIC_PATTERN_PIPE_IN_COMPLETE = 16'h0008;
 	
 	// Software in power signals
 	localparam SIGNAL_REF_CLK_MMCM_ENABLE = 16'h0040;
@@ -187,6 +190,7 @@ module xem6010_top_tb;
     localparam SIGNAL_FRAME_CONTROLLER_RESET = 16'h0010;
     localparam SIGNAL_FSM_BYPASS = 16'h0020; 
     localparam SIGNAL_DATA_STREAM = 16'h0040;
+    localparam SIGNAL_BLITZ_MODE = 16'h0080;
 	 
     // Software Out Frame Controller Signals
     localparam SIGNAL_CAPTURE_IDLE =           16'h0020;
@@ -214,9 +218,14 @@ module xem6010_top_tb;
 	localparam PACKET_BYTES = PACKET_WORDS * 2;
 	localparam PACKET_BITS_UNPADDED = PACKET_WORDS * 20;
 	localparam PACKET_BITS = PACKET_WORDS * 16;
+	
+	localparam DYNAMIC_PATTERN_BITS = 17;
+	localparam DYNAMIC_PATTERN_WORDS = PATTERNS_PER_FRAME * DYNAMIC_PATTERN_BITS;
+	localparam DYNAMIC_PATTERN_BYTES = DYNAMIC_PATTERN_WORDS * 2;
 		
 	genvar i, dqwd, dqswd;
-	integer k;
+	integer k, p;
+	reg [31:0] pattern_tracker;
 	wire [31:0] tmp [300:0];
 	wire [31:0] tmp2 [300:0];
 	
@@ -250,7 +259,8 @@ module xem6010_top_tb;
 	assign test_pattern_fixed[0] = {300{TEST_PATTERN_0}};
 	assign test_pattern_fixed[1] = {300{TEST_PATTERN_1}};
 	
-	
+	wire dynamic_mode;
+	assign dynamic_mode = (DYNAMIC_MODE == "True") ? 1'b1 : 1'b0;
 	
 	
 		
@@ -261,6 +271,7 @@ module xem6010_top_tb;
 	reg [15:0] ram_read_wire_out_register;
 	reg [15:0] power_wire_in_register;
 	reg [15:0] frame_controller_wire_out_register;
+	reg [15:0] signal_wire_in_register;
 	reg transfer_ready;
 	
 	reg [15:0] capture_count;
@@ -278,6 +289,11 @@ module xem6010_top_tb;
 	reg [7:0] hi_in;
 	
 	reg force_dataout;
+	wire [DYNAMIC_PATTERN_BITS-1:0] dynamic_packet [NUMBER_OF_CHIPS-1:0];
+
+	wire [DYNAMIC_PATTERN_BITS-1:0] packet_chip0_ [PATTERNS_PER_FRAME-1:0];
+	wire [DYNAMIC_PATTERN_BITS-1:0] packet_chip1_ [PATTERNS_PER_FRAME-1:0];
+	reg  [15:0]  pipeIn_unshuffled [0:(DYNAMIC_PATTERN_WORDS-1)];
 	
 	//------------------------------------------------------------------------
 	// Clocks
@@ -354,6 +370,7 @@ module xem6010_top_tb;
   wire [1:0]         	ddr3_dqs_n_sdram;
   reg                  	ddr3_ck_p_sdram;
   reg                  	ddr3_ck_n_sdram;
+
 	
 	//------------------------------------------------------------------------
 	// Begin okHostInterface simulation user configurable  global data
@@ -363,14 +380,21 @@ module xem6010_top_tb;
 	                                  //           host interface checks for ready (0-255)
 	parameter PostReadyDelay = 5;     // REQUIRED: # of clocks after ready is asserted and
 	                                  //           check that the block transfer begins (0-255)
-	parameter pipeInSize = 32;      	 // REQUIRED: byte (must be even) length of default
+	parameter pipeInSize = DYNAMIC_PATTERN_BYTES;      	 // REQUIRED: byte (must be even) length of default
 	                                  //           PipeIn; Integer 0-2^32
 	parameter pipeOutSize = PACKET_BYTES;     // REQUIRED: byte (must be even) length of default
 	                                  //           PipeOut; Integer 0-2^32
 
-
+	//------------------------------------------------------------------------
+	// Begin okHostInterface simulation user configurable  global data
+	//------------------------------------------------------------------------
 	reg  [7:0]  pipeIn [0:(pipeInSize-1)];
-	initial for (k=0; k<pipeInSize; k=k+1) pipeIn[k] = 8'h00;
+	always @(*) begin
+		for (k=0; k<DYNAMIC_PATTERN_WORDS; k=k+1) begin
+			pipeIn[k*2] = pipeIn_unshuffled[k][15:8];
+			pipeIn[k*2+1] = pipeIn_unshuffled[k][7:0];
+		end
+	end
 
 	reg  [7:0]  pipeOut [0:(pipeOutSize-1)];
 	initial for (k=0; k<pipeOutSize; k=k+1) pipeOut[k] = 8'h00;
@@ -433,6 +457,61 @@ module xem6010_top_tb;
 		assign pipeOut_flat[i*8 +: 8] = pipeOut[i+1];
 	end endgenerate
 	
+	
+	//------------------------------------------------------------------------
+	// pipeIn patterns   
+	// packet <= {
+	//		1'b1,       // vcsel_enable_dynamic
+	//		1'b1,       // vcsel_wavelength1
+	//		1'b0,       // vcsel_wavelength2
+	//		5'b0010,    // driver_dll_word
+	//		1'b0,       // clk_flip
+	//		4'b0011,    // coarse_word
+	//		3'b110,     // fine_word
+	//		1'b1        // finest_word 
+	//   	};
+	//------------------------------------------------------------------------
+	// Pattern 0
+	assign packet_chip0_[0] = 17'b1_1_0_00010_1_0000_000_0;
+	assign packet_chip1_[0] = 17'b0_1_0_00010_1_0000_000_0;
+	
+	// Pattern 1
+	assign packet_chip0_[1] = 17'b0_1_0_00010_1_0000_000_0;
+	assign packet_chip1_[1] = 17'b1_0_1_00010_1_0000_000_0;
+
+	initial begin
+		for (p=0; p<PATTERNS_PER_FRAME; p=p+1) begin
+			for (k=0; k<DYNAMIC_PATTERN_BITS; k=k+1) begin
+				pipeIn_unshuffled[p*DYNAMIC_PATTERN_BITS+k] = {14'd0, packet_chip1_[p][k], packet_chip0_[p][k]};
+			end
+		end
+	end
+	
+	always @(dynamic_packet[0]) begin
+		if (|dynamic_packet[0]) begin
+		
+			// Increment pattern tracker
+			if (pattern_tracker < PATTERNS_PER_FRAME-1) pattern_tracker <= pattern_tracker + 1;
+			else pattern_tracker <= 0;
+			
+			// Verify packet
+			$display("TIME %0t: VERIFY PACKET: Chip 0: Pattern %0d: %17b: CORRECT", $time, pattern_tracker, packet_chip0_[pattern_tracker]);
+			$display("TIME %0t: VERIFY PACKET: Chip 1: Pattern %0d: %17b: CORRECT", $time, pattern_tracker, packet_chip1_[pattern_tracker]);
+			
+			// Check packet
+			if (dynamic_packet[0] === packet_chip0_[pattern_tracker]) 
+				$display("TIME %0t: PACKET: Chip 0: Pattern %0d: %17b: CORRECT", $time, pattern_tracker, dynamic_packet[0]);
+			else
+				$display("TIME %0t: PACKET: Chip 0: Pattern %0d: %17b: INCORRECT", $time, pattern_tracker, dynamic_packet[0]);
+		
+		
+			// Check packet
+			if (dynamic_packet[1] === packet_chip1_[pattern_tracker]) 
+				$display("TIME %0t: PACKET: Chip 1: Pattern %0d: %17b: CORRECT", $time, pattern_tracker, dynamic_packet[1]);
+			else
+				$display("TIME %0t: PACKET: Chip 1: Pattern %0d: %17b: INCORRECT", $time, pattern_tracker, dynamic_packet[1]);
+		end
+	end
 
 	//------------------------------------------------------------------------
 	// Bus control
@@ -524,7 +603,9 @@ module xem6010_top_tb;
 	endgenerate
 
 
+	//------------------------------------------------------------------------
 	// XEM7010
+	//------------------------------------------------------------------------
 	xem6010_top uut (
 		.hi_in			(hi_in), 
 		.hi_out			(hi_out), 
@@ -555,7 +636,9 @@ module xem6010_top_tb;
 	);
 	
 	
+	//------------------------------------------------------------------------
 	// MOANA3 ICs
+	//------------------------------------------------------------------------
 	generate 
 		for (i = 0; i < NUMBER_OF_CHIPS; i = i+1) begin
 	
@@ -584,7 +667,8 @@ module xem6010_top_tb;
 			.ScanBitsWr(ScanBitsRd[i]),
 			
 			.test_pattern(test_pattern[i]),
-			.force_dataout(force_dataout)
+			.force_dataout(force_dataout),
+			.dynamic_packet(dynamic_packet[i])
 			);
 			
 		end 
@@ -592,7 +676,9 @@ module xem6010_top_tb;
 	
 	
 	
-	// DDR3 SDRAM
+	//------------------------------------------------------------------------
+	// DDR3 SRAM
+	//------------------------------------------------------------------------
 	ddr3_model  u_ddr3(
 			.rst_n				(ddr3_reset_n),
 			.ck					(ddr3_ck_p_sdram),
@@ -617,6 +703,9 @@ module xem6010_top_tb;
 	`include "/users/krenehan/MOANA3/FPGA/MOANA3_Rigid_2by1_XEM7010_Verilog/MOANA2/MOANA2.srcs/sim_1/imports/sim/xem6010_top_tasks.v"
 
 
+	//------------------------------------------------------------------------
+	// Test
+	//------------------------------------------------------------------------
 	initial begin
 	
 		// Initialize registers
@@ -629,11 +718,17 @@ module xem6010_top_tb;
 		ram_status_wire_out_register = 0;
 		ram_read_wire_out_register = 0;
 		frame_controller_wire_out_register = 0;
+		signal_wire_in_register = 0;
 		force_dataout = 0;
 		transfer_ready = 0;
+		pattern_tracker = 0;
+		
+		// pipein
+//		pipeIn[0] = 8'd10; // This becomes bits 15:8 in shift data. shift data is shuffled internal to DPM, meaning that opal kelly pipein function 
+						   // does not shuffle bytes like they would be shuffled in Python. 
+//		pipeIn[1] = 8'd55; // This becomes bits 7:0 in shift data.  
 		
 		for (k=0;k<NUMBER_OF_CHIPS;k=k+1) begin
-			//global_scan_in_data[k] = 0;
 			ScanBitsRd[k] = 0;
 		end
 		
@@ -666,31 +761,30 @@ module xem6010_top_tb;
 			ScanBitsRd[k][`DigitalCore_VCSELWave1Enable] = 1'b1;
 			ScanBitsRd[k][`DigitalCore_VCSELWave2Enable] = 1'b1;
 			ScanBitsRd[k][`DigitalCore_MeasPerPatt] = MEASUREMENTS_PER_PATTERN[24:0];
+			ScanBitsRd[k][`DigitalCore_DynamicConfigEnable] = dynamic_mode;
 		end
 		
 		// Test data in
 		ScanBitsRd[0][`DigitalCore_TestDataIn] = TEST_PATTERN_0;
 		ScanBitsRd[1][`DigitalCore_TestDataIn] = TEST_PATTERN_1;
 		
+		// Dynamic mode
+		if (DYNAMIC_MODE == "True") activate_dynamic_mode;
+		if (DYNAMIC_MODE == "True") send_dynamic_pattern_data;
+		
 		// Configure frame controller settings
 		send_frame_data;
-		for (k=0; k<pipeInSize; k=k+2) begin 
-			pipeIn[k] = pattern_pipe[(k+1)*8 +: 8];
-			pipeIn[k+1] = pattern_pipe[k*8 +: 8];
-		end
-		WriteToPipeIn(ADDR_PIPEIN_PATTERN, pipeInSize);
 		send_data_stream_config;
 		
 		// Reset chips
 		cell_reset;
 		
-		`ifdef RUN_CONTINUOUS
-		
-			// Set FSM bypass
-			$display("TIME %0t: INFO: setting FSM bypass", $time);
-			tiehi_fc_signal(SIGNAL_FSM_BYPASS);
-			#(2000000);
+		// Blitz mode requires that capture be initialized once, but not again before each capture
+		`ifdef BLITZ_MODE
 			
+			// Initialize capture
+			init_capture;
+				
 		`endif
 		
 		// Main capture and readout loop
@@ -699,10 +793,14 @@ module xem6010_top_tb;
 			// Set the capture count
 			capture_count = k;
 			
-			`ifdef RUN_CONTINUOUS
+			`ifdef BLITZ_MODE
+				
+				// Set blitz mode
+				$display("TIME %0t: INFO: setting blitz mode", $time);
+				tiehi_fc_signal(SIGNAL_BLITZ_MODE);
+				#(`TIME_OK_WAIT);
 			
 				// Wait for transfer ready signal
-				check_transfer_ready;
 				check_transfer_ready;
 				while (!(transfer_ready === 1'b1)) begin
 					$display("TIME %0t: INFO: waiting for transfer ready", $time);
@@ -736,11 +834,11 @@ module xem6010_top_tb;
 			
 	end
 	
-		`ifdef RUN_CONTINUOUS
+		`ifdef BLITZ_MODE
 		
 			// Set FSM bypass
-			$display("TIME %0t: INFO: setting FSM bypass", $time);
-			tielo_fc_signal(SIGNAL_FSM_BYPASS);
+			$display("TIME %0t: INFO: setting blitz mode", $time);
+			tielo_fc_signal(SIGNAL_BLITZ_MODE);
 			
 		`endif
 
