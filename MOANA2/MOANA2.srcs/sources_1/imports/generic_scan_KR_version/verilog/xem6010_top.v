@@ -5,7 +5,7 @@
 //`define EXTERNAL_CLOCKS
 
 // Simulation flag
-//`define SIMULATION
+`define SIMULATION
 
 //=============================================================================
 //  Top-level verilog module for the XEM7010 Opal Kelly Board
@@ -197,6 +197,8 @@ module xem6010_top 	(
 	
 	wire																		data_stream_refclk_domain;
 	wire																		data_stream_ticlk_domain;
+	wire																		blitz_mode_ticlk_domain;
+	wire																		blitz_mode_refclk_domain;
 	wire																		read_trigger;
 	wire																		ram_transfer_ready;
 	wire																		read_ack_trigger;
@@ -338,9 +340,6 @@ module xem6010_top 	(
 	//------------------------------------------------------------------------
 	//  Frame controller
 	//------------------------------------------------------------------------
-	// Pipe in wires
-	wire																pipeI_emitter_pattern_write;
-	wire		[OKWIDTH-1:0]											pipeI_emitter_pattern_data;
 	
 	// FSM inputs
 	wire																		fsm_bypass_ticlk_domain;
@@ -370,11 +369,16 @@ module xem6010_top 	(
 	wire																		capture_running_ticlk_domain;
 	wire																		capture_done_refclk_domain;
 	wire																		capture_done_ticlk_domain;
-	wire		[NUMBER_OF_CHIPS-1:0]							emitter_enable;
-	
-	wire		[PATTERN_PIPE_BUFFER_SIZE-1:0]			emitter_pattern_register_bank;
-	wire		[OKWIDTH-1:0]											emitter_pattern_transfer_size;
-	wire		[NUMBER_OF_CHIPS-1:0]							pattern_emitter_packet;
+
+	wire 														dynamic_pattern_pipe_in_complete_ticlk_domain;
+	wire 														dynamic_pattern_pipe_in_complete_refclk_domain;
+	wire														dynamic_mode_enabled_ticlk_domain;
+	wire														dynamic_mode_enabled_refclk_domain;
+	wire 														pattern_pipe_write;
+	wire 		[OKWIDTH-1:0] 									pattern_data_16b;
+	wire 														dynamic_pattern_shift_trigger;
+	wire 														shift_clk;
+	wire 		[NUMBER_OF_CHIPS-1:0] 							shift_data;
 	
 	
 
@@ -426,13 +430,17 @@ module xem6010_top 	(
     assign s_clk_p_muxed    =           scan_done_refclk_domain ? 1'b0 : s_clk_p;
     assign s_clk_n_muxed    =           scan_done_refclk_domain ? 1'b0 : s_clk_n;
     
+    // Dynamic mode
+    assign dynamic_mode_enabled_ticlk_domain = sw_in_signals[2];
+    assign dynamic_pattern_pipe_in_complete_ticlk_domain = sw_in_signals[3];
+    
     // Scan enable and triggerext muxing
     generate
         for (i = 0; i < NUMBER_OF_CHIPS; i = i + 1) begin : s_enable_muxed_generate
-            assign s_enable_muxed[i] = s_enable[i] | emitter_enable[i];
+            assign s_enable_muxed[i] = s_enable[i] | shift_data[i];
         end
     endgenerate
-    assign s_update_shared_muxed = s_update_shared || emitter_enable;
+    assign s_update_shared_muxed = s_update_shared || shift_clk;
     
 	//------------------------------------------------------------------------
     //  Clocking Setup
@@ -502,6 +510,7 @@ module xem6010_top 	(
     assign frame_controller_sw_reset 			=  			sw_in_frame_control_signals[4];
     assign fsm_bypass_ticlk_domain       		=           sw_in_frame_control_signals[5];
     assign data_stream_ticlk_domain      		=           sw_in_frame_control_signals[6];
+    assign blitz_mode_ticlk_domain				= 			sw_in_frame_control_signals[7];
     
     assign number_of_frames =           sw_in_frame_signals[15:0];
     assign patterns_per_frame =         sw_in_pattern_signals[15:0];
@@ -681,8 +690,8 @@ module xem6010_top 	(
     //------------------------------------------------------------------------
      
      // WireOR for switching bus inputs into okHost
-	wire [15*17-1:0]  ok2x;
-	okWireOR # (.N(15)) wireOR (ok2, ok2x);
+	wire [12*17-1:0]  ok2x;
+	okWireOR # (.N(12)) wireOR (ok2, ok2x);
     
     // Wire In: Valid Address Range:  0x00-0x1F
     okWireIn ep00(.ok1(ok1), .ep_addr(ADDR_WIREIN_MSGCTRL), .ep_dataout(msg_ctrl));
@@ -693,37 +702,33 @@ module xem6010_top 	(
 	okWireIn ep05(.ok1(ok1), .ep_addr(ADDR_WIREIN_MEASUREMENT_LSB), .ep_dataout(sw_in_measurementLSB_signals));
 	okWireIn ep06(.ok1(ok1), .ep_addr(ADDR_WIREIN_MEASUREMENT_MSB), .ep_dataout(sw_in_measurementMSB_signals));
     okWireIn ep07(.ok1(ok1), .ep_addr(ADDR_WIREIN_FRAMECTRL), .ep_dataout(sw_in_frame_control_signals));
-    okWireIn ep08(.ok1(ok1), .ep_addr(ADDR_WIREIN_TRANSFERSIZE), .ep_dataout(emitter_pattern_transfer_size));
     okWireIn ep09(.ok1(ok1), .ep_addr(ADDR_WIREIN_STREAM), .ep_dataout(sw_in_stream_signals));
-	okWireIn ep010(.ok1(ok1), .ep_addr(ADDR_WIREIN_PAD_CAPTURED_MASK), .ep_dataout(sw_in_pad_catured_mask));
-	okWireIn ep011(.ok1(ok1), .ep_addr(ADDR_WIREIN_PACKETS_IN_TRANSFER), .ep_dataout(sw_in_packets_in_transfer));
+	okWireIn ep10(.ok1(ok1), .ep_addr(ADDR_WIREIN_PAD_CAPTURED_MASK), .ep_dataout(sw_in_pad_catured_mask));
+	okWireIn ep11(.ok1(ok1), .ep_addr(ADDR_WIREIN_PACKETS_IN_TRANSFER), .ep_dataout(sw_in_packets_in_transfer));
 
     // Wire Out: Valid Address Range:  0x20-0x3F
     okWireOut ep20 (.ok1(ok1), .ok2(ok2x[ 0*17 +: 17 ]), .ep_addr(ADDR_WIREOUT_STATUS), .ep_datain(msg_stat));
     okWireOut ep21 (.ok1(ok1), .ok2(ok2x[ 1*17 +: 17 ]), .ep_addr(ADDR_WIREOUT_SIGNAL), .ep_datain(sw_out_signals));
 	okWireOut ep23 (.ok1(ok1), .ok2(ok2x[ 2*17 +: 17 ]), .ep_addr(ADDR_WIREOUT_FIFOC0F2), .ep_datain({ 5'b0, ob_rd_data_count }));
-	okWireOut ep26 (.ok1(ok1), .ok2(ok2x[ 3*17 +: 17 ]), .ep_addr(ADDR_WIREOUT_FIFOSTATUS), .ep_datain(fifo_stat));
-    okWireOut ep27 (.ok1(ok1), .ok2(ok2x[ 4*17 +: 17 ]), .ep_addr(ADDR_WIREOUT_EMITTERPATTERNLSB), .ep_datain(emitter_pattern_register_bank[15:0]));
-    okWireOut ep28 (.ok1(ok1), .ok2(ok2x[ 5*17 +: 17 ]), .ep_addr(ADDR_WIREOUT_EMITTERPATTERNMSB), .ep_datain(emitter_pattern_register_bank[31:16]));
-	okWireOut ep29 (.ok1(ok1), .ok2(ok2x[ 6*17 +: 17 ]), .ep_addr(ADDR_WIREOUT_FIFOSIZE), .ep_datain(16'd32767));
-	okWireOut ep30 (.ok1(ok1), .ok2(ok2x[ 7*17 +: 17 ]), .ep_addr(ADDR_WIREOUT_FCSTATE), .ep_datain( {6'b0, fc_state} ));
-	okWireOut ep31 (.ok1(ok1), .ok2(ok2x[ 8*17 +: 17 ]), .ep_addr(ADDR_WIREOUT_RAM_FIRST_ERROR), .ep_datain( sw_out_ram_first_error));
-	okWireOut ep32 (.ok1(ok1), .ok2(ok2x[ 9*17 +: 17 ]), .ep_addr(ADDR_WIREOUT_RAM_READ), .ep_datain(sw_out_ram_read));
+	okWireOut ep29 (.ok1(ok1), .ok2(ok2x[ 3*17 +: 17 ]), .ep_addr(ADDR_WIREOUT_FIFOSIZE), .ep_datain(16'd32767));
+	okWireOut ep30 (.ok1(ok1), .ok2(ok2x[ 4*17 +: 17 ]), .ep_addr(ADDR_WIREOUT_FCSTATE), .ep_datain( {6'b0, fc_state} ));
+	okWireOut ep31 (.ok1(ok1), .ok2(ok2x[ 5*17 +: 17 ]), .ep_addr(ADDR_WIREOUT_RAM_FIRST_ERROR), .ep_datain( sw_out_ram_first_error));
+	okWireOut ep32 (.ok1(ok1), .ok2(ok2x[ 6*17 +: 17 ]), .ep_addr(ADDR_WIREOUT_RAM_READ), .ep_datain(sw_out_ram_read));
     
     // Trigger In: Valid Address Range (0x40 - 0x5F)
     okTriggerIn ep40 (.ok1(ok1), .ep_addr(ADDR_TRIGGERIN_DATASTREAMREADACK), .ep_clk(refclk_int), .ep_trigger(sw_trigger_in));
     
     // Trigger Out: Valid Address Range (0x60-0x7F)
-    okTriggerOut ep60 (.ok1(ok1), .ok2(ok2x[ 10*17 +: 17 ]), .ep_addr(ADDR_TRIGGEROUT_DATASTREAMREAD), .ep_clk(refclk_int), .ep_trigger(sw_datastreamread_trigger_out));
+    okTriggerOut ep60 (.ok1(ok1), .ok2(ok2x[ 7*17 +: 17 ]), .ep_addr(ADDR_TRIGGEROUT_DATASTREAMREAD), .ep_clk(refclk_int), .ep_trigger(sw_datastreamread_trigger_out));
 
     // Pipe In: Valid Address Range:  0x80-0x9F
-    okPipeIn ep80 (.ok1(ok1), .ok2(ok2x[ 11*17 +: 17 ]), .ep_addr(ADDR_PIPEIN_SCAN), .ep_write(pipeI_write), .ep_dataout(pipeI_data));
-    okPipeIn ep81 (.ok1(ok1), .ok2(ok2x[ 12*17 +: 17 ]), .ep_addr(ADDR_PIPEIN_PATTERN), .ep_write(pipeI_emitter_pattern_write), .ep_dataout(pipeI_emitter_pattern_data));
+    okPipeIn ep80 (.ok1(ok1), .ok2(ok2x[ 8*17 +: 17 ]), .ep_addr(ADDR_PIPEIN_SCAN), .ep_write(pipeI_write), .ep_dataout(pipeI_data));
+    okPipeIn ep81 (.ok1(ok1), .ok2(ok2x[ 9*17 +: 17 ]), .ep_addr(ADDR_PIPEIN_PATTERN), .ep_write(pattern_pipe_write), .ep_dataout(pattern_data_16b));
 
     // Pipe Out: Valid Address Range:  0xA0-0xBF
-    okPipeOut epA0 (.ok1(ok1), .ok2(ok2x[ 13*17 +: 17 ]), .ep_addr(ADDR_PIPEOUT_SCAN),.ep_read(pipeO_read), .ep_datain(pipeO_data));
-	okPipeOut epB0 (.ok1(ok1), .ok2(ok2x[ 14*17 +: 17 ]), .ep_addr(ADDR_PIPEOUT_FIFO_MASTER), .ep_read(pipeO_master_read), .ep_datain(pipeO_fifo_data_16b_shuffled));
-    
+    okPipeOut epA0 (.ok1(ok1), .ok2(ok2x[ 10*17 +: 17 ]), .ep_addr(ADDR_PIPEOUT_SCAN),.ep_read(pipeO_read), .ep_datain(pipeO_data));
+	okPipeOut epB0 (.ok1(ok1), .ok2(ok2x[ 11*17 +: 17 ]), .ep_addr(ADDR_PIPEOUT_FIFO_MASTER), .ep_read(pipeO_master_read), .ep_datain(pipeO_fifo_data_16b_shuffled));
+	
 
     //-------------------------------------------------------------------------------
     //  FPGA Control Block
@@ -1046,35 +1051,14 @@ module xem6010_top 	(
 	// Shuffle bits before bus transfer
 	assign pipeO_fifo_data_16b_shuffled[15:8] = pipeO_fifo_data_16b[7:0];
 	assign pipeO_fifo_data_16b_shuffled[7:0]  = pipeO_fifo_data_16b[15:8];
-    
-    
-    //-------------------------------------------------------------------------------
-    //  pipe2registerbank
-    //------------------------------------------------------------------------------- 
-    pipe2registerbank # (           
-                                    .OKWidth												(OKWIDTH),
-                                    .BufferSize											(PATTERN_PIPE_BUFFER_SIZE),
-                                    .BufferAddressBits								(PATTERN_PIPE_ADDR_BITS))
-             p2rb           (
-                                    .clk                            							(refclk_int),
-                                    .rst                            							(rst),
-                                    .ok_clk                         							(ti_clk),
-                                    .pipeI_data                     						(pipeI_emitter_pattern_data),
-                                    .pipeI_write                    						(pipeI_emitter_pattern_write),
-                                    .transfer_size                  						(emitter_pattern_transfer_size),
-                                    .register_bank                  					(emitter_pattern_register_bank)
-	);
-                                    
-                                    
+                 
     
     //-----------------------------------------------------------------------------------
 	// Frame Arbiter
     //-----------------------------------------------------------------------------------
 	frame_arbiter # (
 			.NUMBER_OF_CHIPS 			(NUMBER_OF_CHIPS),
-			.OKWIDTH					(OKWIDTH),
-			.PATTERN_PIPE_BUFFER_SIZE 	(PATTERN_PIPE_BUFFER_SIZE),
-			.PATTERN_PIPE_ADDR_BITS		(PATTERN_PIPE_ADDR_BITS) )
+			.OKWIDTH					(OKWIDTH))
 		FrameControllerUnit (
 			.rst							(frame_controller_reset),
 			.clk							(refclk_int),
@@ -1087,6 +1071,7 @@ module xem6010_top 	(
 			.capture_running				(capture_running_refclk_domain),
 			.capture_done					(capture_done_refclk_domain),
 			.data_stream					(data_stream_refclk_domain),
+			.blitz_mode						(blitz_mode_refclk_domain),
 			.read_trigger					(read_trigger),
 			.read_ack_trigger				(read_ack_trigger),
 			.block_next_streamout			(block_next_streamout_refclk_domain),
@@ -1095,20 +1080,38 @@ module xem6010_top 	(
 			.measurements_per_pattern		(measurements_per_pattern),
 			.pad_captured					(pad_captured),
 			.pad_captured_mask				(pad_captured_mask),
-			.blocking								(blocking),
-			.emitter_enable					(emitter_enable),
+			.blocking						(blocking),
 			.refclk_enable					(fsm_refclk_enable),
 			.tx_refclk_enable				(fsm_tx_refclk_enable),
-			.emitter_pattern_register_bank	(emitter_pattern_register_bank),
-			.pattern_emitter_packet			(pattern_emitter_packet), 
-			
-//			.capture_complete                (capture_complete),
-//			.frame_complete                  (frame_complete),
-//			.pad_captured_pulse              (pad_captured_pulse),
-			.state                           (fc_state)
+			.state                          (fc_state),
+			.dynamic_pattern_shift_trigger	(dynamic_pattern_shift_trigger)
 	);
 	
     assign frame_controller_reset = rst | frame_controller_sw_reset;
+    
+    
+	//-----------------------------------------------------------------------------------
+	// Dynamic packet module
+    //-----------------------------------------------------------------------------------
+    dynamic_packet_module # (
+    		.NUMBER_OF_CHIPS				(NUMBER_OF_CHIPS),
+    		.OKWIDTH						(OKWIDTH))
+    	DPM (
+    		.rst							(rst),
+    		.clk							(refclk_int),
+    		.ti_clk							(ti_clk),
+    		
+    		.dynamic_mode_enabled			(dynamic_mode_enabled_refclk_domain),
+    		.pipe_in_complete				(dynamic_pattern_pipe_in_complete_refclk_domain),
+    		
+    		.pipe_in_write					(pattern_pipe_write),
+    		.pipe_in_16b					(pattern_data_16b),
+    		
+    		.shift_trigger					(dynamic_pattern_shift_trigger),
+    		
+    		.shift_clk						(shift_clk),
+    		.shift_data						(shift_data)
+    );
 
 
 	//-------------------------------------------------------------------------------
@@ -1126,15 +1129,21 @@ module xem6010_top 	(
 	assign capture_running_ticlk_domain = fc_signals_refclk_to_ticlk_out[1];
 	assign capture_done_ticlk_domain = fc_signals_refclk_to_ticlk_out[0];
 												
-	wire [5:0] fc_signals_ticlk_to_refclk_in;
-	wire [5:0] fc_signals_ticlk_to_refclk_out;
+	wire [8:0] fc_signals_ticlk_to_refclk_in;
+	wire [8:0] fc_signals_ticlk_to_refclk_out;
 	assign fc_signals_ticlk_to_refclk_in = {
+												dynamic_pattern_pipe_in_complete_ticlk_domain,
+												dynamic_mode_enabled_ticlk_domain,
+												blitz_mode_ticlk_domain,
 												scan_done_ticlk_domain,
 												frame_data_sent_ticlk_domain,
 												capture_start_ticlk_domain,
 												capture_interrupt_ticlk_domain,
 												data_stream_ticlk_domain,
 												fsm_bypass_ticlk_domain };
+	assign dynamic_pattern_pipe_in_complete_refclk_domain = fc_signals_ticlk_to_refclk_out[8];
+	assign dynamic_mode_enabled_refclk_domain = fc_signals_ticlk_to_refclk_out[7];
+	assign blitz_mode_refclk_domain = fc_signals_ticlk_to_refclk_out[6];
 	assign scan_done_refclk_domain = fc_signals_ticlk_to_refclk_out[5];
 	assign frame_data_sent_refclk_domain = fc_signals_ticlk_to_refclk_out[4];
 	assign capture_start_refclk_domain = fc_signals_ticlk_to_refclk_out[3];
@@ -1144,7 +1153,7 @@ module xem6010_top 	(
 	
 												
 	synchronizer #	(
-												.NumSignals								(6),
+												.NumSignals								(9),
 												.Stages									(2)
 						)
 		fc_rc_sync	(

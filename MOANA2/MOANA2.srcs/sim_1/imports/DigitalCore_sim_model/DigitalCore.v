@@ -151,7 +151,8 @@ module DigitalCore(
 	    ScanBitsWr, 
 	    
 	    test_pattern,
-	    force_dataout
+	    force_dataout,
+	    dynamic_packet
 
     );
 
@@ -221,6 +222,7 @@ module DigitalCore(
     output wire                                 VCSEL2_Anode;
     input wire [HistTotalBits-1:0]				test_pattern;
     input wire									force_dataout;
+    output wire [DynamicPacketSize-1:0] 		dynamic_packet;
     //-----------------------------------------------------------------------------------    
 
     //-----------------------------------------------------------------------------------
@@ -302,7 +304,10 @@ module DigitalCore(
     wire                                                    shift_data;
     wire                                                    dynamic_histogram_reset_trigger;
     wire                                                    dynamic_histogram_reset_active;
-    //-----------------------------------------------------------------------------------    
+    //----------------------------------------------------------------------------------- 
+    
+    
+    assign dynamic_packet = packet;   
 
     //-----------------------------------------------------------------------------------
     //  Assigns
